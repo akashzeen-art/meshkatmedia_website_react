@@ -68,7 +68,7 @@ function Footer() {
   return (
     <footer className="site-footer">
       <span className="footer-text">© {year} {brand.name}</span>
-      <span className="footer-text">Sharjah — United Arab Emirates</span>
+      <span className="footer-text">United Arab Emirates</span>
       <a className="footer-text" href={brand.emailHref}>
         {brand.email}
       </a>
