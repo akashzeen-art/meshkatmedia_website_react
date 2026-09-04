@@ -1,397 +1,417 @@
 import { useEffect, useRef } from 'react'
 
-/**
- * Ember-themed canvas atmosphere for the hero —
- * layered mouse-reactive waves inspired by the breathe visual.
- */
+const VS = `
+attribute vec2 a;
+void main() {
+  gl_Position = vec4(a, 0.0, 1.0);
+}
+`
+
+const FS = `
+precision highp float;
+
+uniform vec2  uR;
+uniform float uT;
+uniform float uS;
+uniform vec2  uMouse;
+uniform float uMouseActive;
+uniform float uQ;
+
+float sat(float x) { return clamp(x, 0.0, 1.0); }
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for (int i = 0; i < 5; i++) {
+    v += a * noise(p);
+    p = m * p;
+    a *= 0.5;
+  }
+  return v;
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 uv = (fc - 0.5 * uR) / uR.y;
+  float aspect = uR.x / uR.y;
+  float t = uT;
+  float s = sat(uS);
+
+  /* Warm cinematic palette — dawn easing toward soft midday */
+  vec3 skyZenith = mix(vec3(0.16, 0.20, 0.40), vec3(0.30, 0.52, 0.82), s);
+  vec3 skyMid    = mix(vec3(0.52, 0.40, 0.52), vec3(0.48, 0.70, 0.92), s);
+  vec3 skyHori   = mix(vec3(1.00, 0.58, 0.32), vec3(0.90, 0.80, 0.62), s);
+  vec3 sunCol    = mix(vec3(1.00, 0.70, 0.32), vec3(1.00, 0.95, 0.80), s);
+  vec3 seaDeep   = mix(vec3(0.06, 0.20, 0.36), vec3(0.04, 0.34, 0.55), s);
+  vec3 seaNear   = mix(vec3(0.16, 0.48, 0.54), vec3(0.10, 0.58, 0.64), s);
+  vec3 drySand   = mix(vec3(0.82, 0.64, 0.42), vec3(0.90, 0.76, 0.54), s);
+  vec3 wetSand   = mix(vec3(0.36, 0.28, 0.22), vec3(0.40, 0.34, 0.26), s);
+  vec3 foamCol   = vec3(0.94, 0.96, 0.97);
+
+  float horizon = 0.10;
+  float shore   = -0.015;
+  float h = uv.y;
+
+  vec2 mUv = (uMouse - 0.5) * vec2(aspect, 1.0);
+  float mouseActive = uMouseActive;
+
+  /* ----- Sky ----- */
+  float skyH = sat((h - horizon) / 0.78);
+  vec3 sky = mix(skyHori, skyMid, smoothstep(0.0, 0.42, skyH));
+  sky = mix(sky, skyZenith, smoothstep(0.28, 1.0, skyH));
+
+  vec2 cUV = vec2(uv.x * 1.35 + t * 0.01, skyH * 2.4);
+  float clouds = smoothstep(0.50, 0.80, fbm(cUV * 1.7));
+  clouds *= smoothstep(0.0, 0.32, skyH) * 0.22;
+  sky = mix(sky, mix(sky, vec3(1.0, 0.93, 0.86), 0.55), clouds);
+
+  vec2 sunPos = vec2(-0.38 + s * 0.5, horizon + 0.10 + s * 0.24);
+  float sd = length(uv - sunPos);
+  sky += sunCol * exp(-sd * 16.0) * 0.6;
+  sky += sunCol * exp(-sd * 5.5) * 0.25;
+  sky += sunCol * smoothstep(0.032, 0.0, sd) * 1.5;
+  sky += sunCol * exp(-abs(h - horizon) * 26.0) * 0.2;
+
+  /* ----- Ocean (perspective) ----- */
+  float pyO = max(0.0015, horizon - h);
+  float perspO = 1.0 / (pyO + 0.07);
+  vec2 wUV = vec2(uv.x * perspO * 0.5, perspO * 0.32 + t * 0.07);
+
+  float swell = sin(wUV.x * 3.2 + t * 0.65) * 0.5 + 0.5;
+  swell *= sin(wUV.y * 2.0 - t * 0.5) * 0.5 + 0.5;
+  float chop = noise(wUV * 5.5 + t * 0.18);
+  float wave = mix(swell, chop, 0.32);
+
+  float depthGrad = sat((horizon - h) / max(0.001, horizon - shore));
+  vec3 water = mix(seaDeep, seaNear, pow(1.0 - depthGrad, 0.85));
+  water = mix(water, water * 1.14, wave * 0.2);
+  water = mix(water, skyHori * 0.9, smoothstep(shore, horizon, h) * 0.42);
+  water += sunCol * pow(noise(wUV * 12.0 + vec2(t * 0.35, 0.0)), 9.0) * 0.11 * (1.0 - depthGrad);
+
+  float lines = sin(wUV.y * 16.0 - t * 1.5 + sin(wUV.x * 3.5) * 2.0);
+  water = mix(water, foamCol, smoothstep(0.82, 1.0, lines) * (1.0 - depthGrad) * 0.16);
+
+  /* Sun path reflection on water */
+  float path = exp(-abs(uv.x - sunPos.x) * 7.0) * smoothstep(shore - 0.05, horizon, h);
+  water += sunCol * path * 0.14 * (1.0 - depthGrad * 0.5);
+
+  /* ----- Sand (perspective) ----- */
+  float pyS = max(0.018, shore + 0.04 - h);
+  float perspS = 1.0 / (pyS + 0.04);
+  vec2 sUV = vec2(uv.x * perspS * 0.95, perspS * 0.6);
+
+  float n1 = fbm(sUV * 2.2);
+  float n2 = fbm(sUV * 8.0 + 9.0);
+  float n3 = noise(sUV * 36.0);
+  float n4 = noise(sUV * 85.0 + 4.0);
+
+  float wet = sat(smoothstep(-0.32, 0.0, h - shore) + (n1 - 0.5) * 0.1);
+  vec3 sand = mix(drySand, wetSand, wet);
+  sand *= 0.80 + n1 * 0.24 + n2 * 0.12;
+  sand *= 0.93 + n3 * 0.12;
+
+  float close = smoothstep(0.0, -0.55, h);
+  sand = mix(sand, sand * (0.88 + n4 * 0.24), close * 0.75);
+
+  float ridges = sin(sUV.x * 6.5 + n1 * 2.5) * 0.5 + 0.5;
+  sand = mix(sand, sand * 0.9, ridges * 0.12 * (1.0 - wet) * close);
+
+  sand *= 0.62 + n2 * 0.18 + wet * 0.06;
+  sand += sunCol * (1.0 - wet) * 0.07 * close;
+  sand += skyHori * wet * 0.12;
+  sand += sunCol * pow(noise(sUV * 18.0 + t * 0.08), 7.0) * wet * 0.1;
+
+  /* Shore foam */
+  float shoreY = shore + sin(uv.x * 5.5 + t * 0.85) * 0.014
+               + sin(uv.x * 13.0 - t * 1.3) * 0.006;
+  float foam = exp(-abs(h - shoreY) * 50.0);
+  float foamPulse = 0.5 + 0.5 * sin(uv.x * 9.0 - t * 2.0 + n1 * 3.5);
+  sand = mix(sand, foamCol, foam * foamPulse * 0.7);
+
+  float wash = exp(-abs(h - shoreY + 0.028) * 36.0);
+  wash *= 0.3 + 0.25 * sin(t * 1.4 + uv.x * 4.5);
+  sand = mix(sand, mix(wetSand, foamCol, 0.35), wash * 0.45);
+
+  /* Mouse: sand grains push away + soft crater (visible motion) */
+  float sandRegion = smoothstep(0.08, -0.05, h);
+  vec2 d = (uv - mUv) * vec2(1.0, 1.25);
+  float dist = length(d);
+  float radius = 0.16;
+  float influence = exp(-dist * dist / (radius * radius)) * mouseActive * sandRegion;
+  vec2 push = normalize(d + vec2(0.0001)) * influence * 0.055;
+  vec2 grainUV = sUV + push * perspS * 2.5;
+  float movedGrain = noise(grainUV * 70.0);
+  float movedGrain2 = noise(grainUV * 120.0 + 2.0);
+  sand = mix(sand, sand * (0.75 + movedGrain * 0.5), influence * 0.85);
+  sand += vec3(0.14, 0.10, 0.05) * influence * movedGrain2;
+  sand *= 1.0 - influence * 0.35 * (1.0 - smoothstep(0.0, radius * 0.55, dist));
+  float rim = influence * exp(-pow((dist - radius * 0.4) * 14.0, 2.0));
+  sand += drySand * rim * 0.55;
+  sand += vec3(0.2, 0.14, 0.06) * influence * (1.0 - wet) * 0.4;
+
+  /* ----- Compose bands ----- */
+  float skyM = smoothstep(horizon - 0.012, horizon + 0.003, h);
+  float sandM = 1.0 - smoothstep(shore - 0.03, shore + 0.025, h);
+  float waterM = sat(1.0 - skyM - sandM);
+
+  /* Soft shoreline merge */
+  float blend = smoothstep(shore - 0.05, shore + 0.02, h) * smoothstep(shore + 0.04, shore - 0.02, h);
+  vec3 shoreMix = mix(sand, water, 0.55);
+
+  vec3 col = sky * skyM + water * waterM + sand * sandM;
+  col = mix(col, shoreMix, blend * 0.5);
+
+  /* Grade */
+  col = pow(max(col, vec3(0.0)), vec3(0.94));
+  col *= vec3(1.03, 0.99, 0.95);
+
+  float vig = smoothstep(1.4, 0.3, length(uv * vec2(0.7, 1.05)));
+  col *= 0.78 + 0.22 * vig;
+
+  /* Left scrim so Meshkat type stays readable */
+  float scrim = smoothstep(0.65 * aspect, -0.2 * aspect, uv.x);
+  scrim *= smoothstep(0.5, -0.35, h) * 0.5;
+  col *= 1.0 - scrim;
+
+  col += (hash(fc + floor(t * 20.0)) - 0.5) * 0.016;
+
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`
+
+function compile(gl, type, src) {
+  const shader = gl.createShader(type)
+  gl.shaderSource(shader, src)
+  gl.compileShader(shader)
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error('Beach shader:', gl.getShaderInfoLog(shader))
+    gl.deleteShader(shader)
+    return null
+  }
+  return shader
+}
+
 export default function HeroWaveCanvas() {
-  const bgRef = useRef(null)
-  const fxRef = useRef(null)
-  const topRef = useRef(null)
   const wrapRef = useRef(null)
+  const canvasRef = useRef(null)
 
   useEffect(() => {
     const wrap = wrapRef.current
-    const bgC = bgRef.current
-    const fxC = fxRef.current
-    const tpC = topRef.current
-    if (!wrap || !bgC || !fxC || !tpC) return undefined
+    const canvas = canvasRef.current
+    if (!wrap || !canvas) return undefined
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduced) return undefined
+    const gl = canvas.getContext('webgl', {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      powerPreference: 'high-performance',
+    })
+    if (!gl) return undefined
 
-    const bgX = bgC.getContext('2d')
-    const fxX = fxC.getContext('2d')
-    const tpX = tpC.getContext('2d')
-    if (!bgX || !fxX || !tpX) return undefined
+    const vert = compile(gl, gl.VERTEX_SHADER, VS)
+    const frag = compile(gl, gl.FRAGMENT_SHADER, FS)
+    if (!vert || !frag) return undefined
 
-    let W = 0
-    let H = 0
+    const prog = gl.createProgram()
+    gl.attachShader(prog, vert)
+    gl.attachShader(prog, frag)
+    gl.linkProgram(prog)
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(prog))
+      return undefined
+    }
+
+    gl.useProgram(prog)
+    gl.disable(gl.DEPTH_TEST)
+
+    const buf = gl.createBuffer()
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+    const ap = gl.getAttribLocation(prog, 'a')
+    gl.enableVertexAttribArray(ap)
+    gl.vertexAttribPointer(ap, 2, gl.FLOAT, false, 0, 0)
+
+    const uR = gl.getUniformLocation(prog, 'uR')
+    const uT = gl.getUniformLocation(prog, 'uT')
+    const uS = gl.getUniformLocation(prog, 'uS')
+    const uMouse = gl.getUniformLocation(prog, 'uMouse')
+    const uMouseActive = gl.getUniformLocation(prog, 'uMouseActive')
+    const uQ = gl.getUniformLocation(prog, 'uQ')
+
+    const mobile = window.matchMedia('(max-width: 768px), (pointer: coarse)').matches
+    let quality = mobile ? 0.85 : 1
+    const MAX_DPR = mobile ? 1.25 : 1.65
+
     let raf = 0
-    let last = performance.now()
-
+    const t0 = performance.now()
+    let last = t0
     let mx = 0.5
-    let my = 0.5
-    let rmx = 0.5
-    let rmy = 0.5
-    let pmx = 0.5
-    let pmy = 0.5
-    let mvx = 0
-    let mvy = 0
-    let clickImpulse = 0
-    let dragEnergy = 0
-    let isDragging = false
-    const clickRipples = []
+    let my = 0.22
+    let smx = 0.5
+    let smy = 0.22
+    let mouseActive = 0
+    let touching = false
+    let moving = false
+    let lastMoveAt = 0
+    let scrollT = 0
+    let scrollS = 0
+    let fpsA = 0
+    let fpsN = 0
+    let lowT = 0
 
-    // Soft ambient "breath" pulse so waves feel alive without a session
-    let breath = 0.28
-
-    const AR = 200
-    const AG = 101
-    const AB = 42
+    const updateScroll = () => {
+      const hero = wrap.closest('.hero')
+      const h = hero ? hero.offsetHeight : window.innerHeight
+      scrollT = Math.min(1, Math.max(0, window.scrollY / Math.max(h * 1.4, 1)))
+    }
 
     const resize = () => {
       const rect = wrap.getBoundingClientRect()
-      W = Math.max(1, Math.floor(rect.width))
-      H = Math.max(1, Math.floor(rect.height))
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      ;[bgC, fxC, tpC].forEach((c) => {
-        c.width = W * dpr
-        c.height = H * dpr
-        c.style.width = `${W}px`
-        c.style.height = `${H}px`
-        const ctx = c.getContext('2d')
-        ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
-      })
+      const w = Math.max(1, Math.floor(rect.width))
+      const h = Math.max(1, Math.floor(rect.height))
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR) * quality
+      const pw = Math.max(1, Math.round(w * dpr))
+      const ph = Math.max(1, Math.round(h * dpr))
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+      if (canvas.width !== pw || canvas.height !== ph) {
+        canvas.width = pw
+        canvas.height = ph
+        gl.viewport(0, 0, pw, ph)
+        gl.uniform2f(uR, pw, ph)
+      }
     }
 
-    const onMove = (e) => {
+    const pointer = (cx, cy, active) => {
       const rect = wrap.getBoundingClientRect()
-      pmx = mx
-      pmy = my
-      mx = (e.clientX - rect.left) / Math.max(rect.width, 1)
-      my = (e.clientY - rect.top) / Math.max(rect.height, 1)
-      mvx = (mx - pmx) * 60
-      mvy = (my - pmy) * 60
-      if (isDragging) {
-        dragEnergy = Math.min(dragEnergy + Math.hypot(mvx, mvy) * 0.04, 1.5)
-        if (Math.random() < 0.08) {
-          clickRipples.push({
-            x: mx,
-            y: my,
-            t: 0,
-            strength: 0.4 + dragEnergy * 0.3,
-          })
-          if (clickRipples.length > 8) clickRipples.shift()
-        }
+      if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) {
+        if (!touching) moving = false
+        return
+      }
+      mx = (cx - rect.left) / Math.max(rect.width, 1)
+      my = 1 - (cy - rect.top) / Math.max(rect.height, 1)
+      /* Sand occupies roughly lower half of the hero */
+      const overSand = my < 0.58
+      if (active && overSand) {
+        moving = true
+        lastMoveAt = performance.now()
+        mouseActive = Math.min(1, mouseActive + 0.55)
       }
     }
 
-    const onDown = (e) => {
-      const rect = wrap.getBoundingClientRect()
-      isDragging = true
-      clickImpulse = 1
-      clickRipples.push({
-        x: (e.clientX - rect.left) / Math.max(rect.width, 1),
-        y: (e.clientY - rect.top) / Math.max(rect.height, 1),
-        t: 0,
-        strength: 1,
-      })
-      if (clickRipples.length > 6) clickRipples.shift()
+    const onMove = (e) => pointer(e.clientX, e.clientY, true)
+    const onLeave = () => {
+      touching = false
+      moving = false
+    }
+    const onTouchStart = (e) => {
+      const touch = e.touches[0]
+      if (!touch) return
+      touching = true
+      pointer(touch.clientX, touch.clientY, true)
+    }
+    const onTouchMove = (e) => {
+      const touch = e.touches[0]
+      if (!touch) return
+      pointer(touch.clientX, touch.clientY, true)
+    }
+    const onTouchEnd = () => {
+      touching = false
+      moving = false
     }
 
-    const onUp = () => {
-      isDragging = false
-    }
-
-    const wv = (ctx, t, yc, amp, fm, sp, ph2, chaos, mouseAmp) => {
-      const ma = mouseAmp || 0
-      const yB = H * yc + H * (rmy - 0.5) * ma * 0.06
-      ctx.beginPath()
-      for (let x = 0; x <= W; x += 3) {
-        const nx = x / W
-        const ph = t * sp
-        const mouseWarp =
-          (rmx - 0.5) * ma * amp * 0.5 * Math.sin(nx * Math.PI * 2 + 0.5)
-        const dragWarp =
-          dragEnergy *
-          amp *
-          0.3 *
-          Math.sin(nx * Math.PI * 3 + t * 0.003 + (rmx - 0.5) * 4)
-        let rippleWarp = 0
-        for (const r of clickRipples) {
-          const dx = nx - r.x
-          const age = r.t
-          const wavefront = age * 0.6
-          const dist = Math.abs(dx)
-          const spread = 0.12 + age * 0.2
-          rippleWarp +=
-            r.strength *
-            amp *
-            0.22 *
-            Math.exp(-((dist - wavefront) ** 2) / (spread * spread)) *
-            Math.exp(-age * 0.9) *
-            Math.sin((dist - wavefront) * 18)
-        }
-        let y =
-          yB +
-          mouseWarp +
-          dragWarp +
-          rippleWarp +
-          Math.sin(nx * Math.PI * 2 * fm + ph * 7) * amp * (1 + ma * 0.4) +
-          Math.sin(nx * Math.PI * 3 * fm * 0.73 + ph * 5.2 + ph2) * amp * 0.4
-        if (chaos > 0.04) {
-          y += Math.sin(nx * Math.PI * 8 * fm + ph * 16 + ph2) * amp * chaos * 0.55
-          y += Math.sin(nx * Math.PI * 14 * fm + ph * 24) * amp * chaos * 0.22
-        }
-        if (x === 0) ctx.moveTo(0, y)
-        else ctx.lineTo(x, y)
-      }
-    }
-
-    const drawMouseWave = (t, alpha) => {
-      const yBase = H * (0.3 + rmy * 0.4)
-      const wAmp =
-        H *
-        (0.03 + breath * 0.05) *
-        (1 + rmx * 0.8 + Math.abs(rmy - 0.5) * 0.6) *
-        (1 + dragEnergy * 0.8)
-      const velSkew = mvx * 0.003
-      for (let layer = 0; layer < 4; layer++) {
-        const phOff = layer * 1.1
-        tpX.beginPath()
-        for (let x = 0; x <= W; x += 3) {
-          const nx = x / W
-          let y =
-            yBase +
-            Math.sin(
-              nx * Math.PI * 2 * (1 + rmx * 0.8) + t * 0.000045 * 7 + phOff + velSkew * nx,
-            ) *
-              wAmp +
-            Math.sin(nx * Math.PI * 3.7 + t * 0.000028 * 5 + phOff) * wAmp * 0.38 +
-            (rmx - 0.5) * H * 0.06 * Math.sin(nx * Math.PI + layer) +
-            mvx * wAmp * 0.08 * Math.sin(nx * Math.PI * 3 + phOff) +
-            mvy * wAmp * 0.05 * Math.cos(nx * Math.PI * 2 + layer)
-          for (const r of clickRipples) {
-            const dx = nx - r.x
-            const age = r.t
-            const wavefront = age * 0.55
-            const spread = 0.1 + age * 0.15
-            y +=
-              r.strength *
-              H *
-              0.016 *
-              Math.exp(-((Math.abs(dx) - wavefront) ** 2) / (spread * spread)) *
-              Math.exp(-age) *
-              Math.sin((Math.abs(dx) - wavefront) * 22)
-          }
-          if (x === 0) tpX.moveTo(0, y)
-          else tpX.lineTo(x, y)
-        }
-        tpX.strokeStyle = `rgba(${AR},${AG},${AB},${
-          (alpha - 0.01 * layer) * (0.45 + breath * 0.65 + clickImpulse * 0.35)
-        })`
-        tpX.lineWidth = 1.4 - layer * 0.25
-        tpX.stroke()
-      }
-    }
-
-    const draw = (t, bs) => {
-      bgX.fillStyle = '#0a0908'
-      bgX.fillRect(0, 0, W, H)
-
-      const gr = bgX.createRadialGradient(W / 2, H * 0.55, 0, W / 2, H * 0.55, W * 0.72)
-      gr.addColorStop(0, `rgba(${AR},${AG},${AB},${0.08 + bs * 0.25})`)
-      gr.addColorStop(0.42, `rgba(135,48,8,${0.04 + bs * 0.12})`)
-      gr.addColorStop(1, 'transparent')
-      bgX.fillStyle = gr
-      bgX.fillRect(0, 0, W, H)
-
-      const mGlowX = W * (rmx + mvx * 0.02)
-      const mGlowY = H * (rmy + mvy * 0.02)
-      const gr2 = bgX.createRadialGradient(
-        mGlowX,
-        mGlowY,
-        0,
-        mGlowX,
-        mGlowY,
-        W * (0.45 + dragEnergy * 0.18),
-      )
-      gr2.addColorStop(0, `rgba(210,72,18,${0.06 + bs * 0.12 + dragEnergy * 0.08})`)
-      gr2.addColorStop(0.35, `rgba(150,45,10,${0.03 + bs * 0.06})`)
-      gr2.addColorStop(1, 'transparent')
-      bgX.fillStyle = gr2
-      bgX.fillRect(0, 0, W, H)
-
-      if (clickImpulse > 0.05) {
-        clickRipples.forEach((r) => {
-          const g2 = bgX.createRadialGradient(
-            r.x * W,
-            r.y * H,
-            0,
-            r.x * W,
-            r.y * H,
-            W * 0.18 * r.strength,
-          )
-          g2.addColorStop(
-            0,
-            `rgba(${AR},${AG},${AB},${r.strength * 0.08 * Math.exp(-r.t * 1.5)})`,
-          )
-          g2.addColorStop(1, 'transparent')
-          bgX.fillStyle = g2
-          bgX.fillRect(0, 0, W, H)
-        })
-      }
-
-      const layers = [
-        [0.82, 115, 0.78, 0.000082, 20, 65, 10, 0.56],
-        [0.76, 95, 1.02, 0.000115, 24, 68, 13, 0.47],
-        [0.7, 76, 1.28, 0.000152, 21, 62, 16, 0.39],
-        [0.64, 60, 1.58, 0.000192, 27, 60, 19, 0.32],
-        [0.58, 48, 1.98, 0.000238, 19, 56, 22, 0.26],
-        [0.53, 38, 2.48, 0.000285, 23, 52, 25, 0.2],
-        [0.48, 28, 3.2, 0.000338, 20, 49, 28, 0.15],
-        [0.44, 20, 4.1, 0.000398, 22, 45, 31, 0.11],
-        [0.4, 13, 5.3, 0.000468, 18, 41, 34, 0.08],
-      ]
-
-      layers.forEach(([yc, a, fm, sp, hue, sat, lit, op], i) => {
-        wv(bgX, t, yc, a * (0.62 + 0.38 * bs), fm, sp, i, 0.08 + bs * 0.12, 0.7)
-        bgX.lineTo(W, H)
-        bgX.closePath()
-        bgX.fillStyle = `hsla(${hue},${sat}%,${lit + bs * 15}%,${op + bs * 0.1})`
-        bgX.fill()
-      })
-
-      fxX.clearRect(0, 0, W, H)
-      tpX.clearRect(0, 0, W, H)
-
-      const mxBias = rmx - 0.5
-      const myBias = rmy - 0.5
-      const lines = [
-        [0.65, 0.062, 1.28, 0.000048, 0.2, 1.0],
-        [0.55, 0.04, 2.0, 0.000065, 0.15, 0.7],
-        [0.72, 0.048, 0.98, 0.000036, 0.13, 0.6],
-        [0.48, 0.026, 2.7, 0.000082, 0.11, 0.5],
-        [0.6, 0.068, 0.8, 0.000033, 0.16, 0.9],
-        [0.78, 0.036, 1.5, 0.000043, 0.11, 0.55],
-      ]
-
-      lines.forEach(([yc, a, fm, sp, op, w], li) => {
-        const mouseYShift = myBias * H * 0.18 * (1 - li * 0.08)
-        const yB = H * yc + mouseYShift
-        const mxAmpBoost =
-          1 + Math.abs(mxBias) * 1.8 + dragEnergy * 1.2 + Math.abs(myBias) * 0.6
-        const amp = H * a * (0.52 + 0.48 * bs) * mxAmpBoost
-        const ph = t * sp
-        const fmMod = fm * (1 + mxBias * 0.5 + mvx * 0.04)
-        fxX.beginPath()
-        for (let x = 0; x <= W; x += 3) {
-          const nx = x / W
-          let y =
-            yB +
-            Math.sin(nx * Math.PI * 2 * fmMod + ph * 6 + mxBias * nx * 3) * amp +
-            Math.sin(nx * Math.PI * 4 * fmMod * 0.6 + ph * 3.8 + myBias * 2) * amp * 0.35 +
-            mxBias * amp * 0.5 * Math.sin(nx * Math.PI * 1.5 + li) +
-            mvx * amp * 0.06 * Math.sin(nx * Math.PI * 2.5 + ph * 2) +
-            mvy * amp * 0.05 * Math.cos(nx * Math.PI * 2 + li)
-          for (const r of clickRipples) {
-            const dx = nx - r.x
-            const age = r.t
-            const wf = age * 0.55
-            const sp2 = 0.1 + age * 0.15
-            y +=
-              r.strength *
-              amp *
-              0.28 *
-              Math.exp(-((Math.abs(dx) - wf) ** 2) / (sp2 * sp2)) *
-              Math.exp(-age) *
-              Math.sin((Math.abs(dx) - wf) * 20)
-          }
-          if (x === 0) fxX.moveTo(0, y)
-          else fxX.lineTo(x, y)
-        }
-        const distToMouse = Math.abs(rmy - yc)
-        const proximityBoost = Math.exp(-distToMouse * 3) * 0.4
-        fxX.strokeStyle = `rgba(245,232,212,${(op + proximityBoost) * (0.45 + 0.55 * bs)})`
-        fxX.lineWidth = w * (1 + proximityBoost * 1.5)
-        fxX.stroke()
-      })
-
-      drawMouseWave(t, 0.12)
-
-      // Soft vignette
-      const vig = bgX.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, W * 0.75)
-      vig.addColorStop(0, 'transparent')
-      vig.addColorStop(0.7, 'rgba(10,9,8,0.15)')
-      vig.addColorStop(1, 'rgba(10,9,8,0.72)')
-      bgX.fillStyle = vig
-      bgX.fillRect(0, 0, W, H)
-    }
-
-    const tick = (now) => {
-      const dt = Math.min(now - last, 50)
+    const frame = (now) => {
+      raf = requestAnimationFrame(frame)
+      const dt = Math.min((now - last) / 1000, 0.05)
       last = now
 
-      rmx += (mx - rmx) * 0.04
-      rmy += (my - rmy) * 0.04
-      clickImpulse *= 0.94
-      dragEnergy *= 0.97
-      mvx *= 0.88
-      mvy *= 0.88
-      for (let i = clickRipples.length - 1; i >= 0; i--) {
-        clickRipples[i].t += 0.016
-        if (clickRipples[i].t > 2.5) clickRipples.splice(i, 1)
+      fpsA += dt
+      fpsN++
+      if (fpsA > 0.8) {
+        const fps = fpsN / fpsA
+        fpsA = 0
+        fpsN = 0
+        if (fps < 45) {
+          lowT += 0.8
+          if (lowT > 1.5 && quality > 0.7) {
+            quality = Math.max(0.7, +(quality - 0.08).toFixed(2))
+            lowT = 0
+            resize()
+          }
+        } else lowT = 0
       }
 
-      breath = 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(now * 0.00068))
-      draw(now, breath)
-      raf = requestAnimationFrame(tick)
+      scrollS += (scrollT - scrollS) * (1 - Math.exp(-dt * 3.5))
+      smx += (mx - smx) * (1 - Math.exp(-dt * 16))
+      smy += (my - smy) * (1 - Math.exp(-dt * 16))
+
+      if (now - lastMoveAt > 80) moving = false
+
+      if (touching || moving) {
+        mouseActive = Math.min(1, Math.max(mouseActive, 0.85) + dt * 2)
+      } else {
+        mouseActive = Math.max(0, mouseActive - dt * 1.1)
+      }
+
+      gl.uniform1f(uT, (now - t0) / 1000)
+      gl.uniform1f(uS, scrollS)
+      gl.uniform2f(uMouse, smx, smy)
+      gl.uniform1f(uMouseActive, mouseActive)
+      gl.uniform1f(uQ, quality)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     }
 
     resize()
+    updateScroll()
     const ro = new ResizeObserver(resize)
     ro.observe(wrap)
-    wrap.addEventListener('mousemove', onMove)
-    wrap.addEventListener('mousedown', onDown)
-    window.addEventListener('mouseup', onUp)
-    wrap.addEventListener(
-      'touchstart',
-      (e) => {
-        const t = e.touches[0]
-        if (!t) return
-        onDown(t)
-      },
-      { passive: true },
-    )
-    wrap.addEventListener(
-      'touchmove',
-      (e) => {
-        const t = e.touches[0]
-        if (!t) return
-        onMove(t)
-      },
-      { passive: true },
-    )
-    wrap.addEventListener('touchend', onUp)
-    raf = requestAnimationFrame(tick)
+    window.addEventListener('scroll', updateScroll, { passive: true })
+    /* Window-level tracking so hero overlays don't block sand hover */
+    window.addEventListener('mousemove', onMove, { passive: true })
+    wrap.addEventListener('mouseleave', onLeave)
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    raf = requestAnimationFrame(frame)
 
     return () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
-      wrap.removeEventListener('mousemove', onMove)
-      wrap.removeEventListener('mousedown', onDown)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('scroll', updateScroll)
+      window.removeEventListener('mousemove', onMove)
+      wrap.removeEventListener('mouseleave', onLeave)
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+      gl.deleteProgram(prog)
+      gl.deleteShader(vert)
+      gl.deleteShader(frag)
+      gl.deleteBuffer(buf)
     }
   }, [])
 
   return (
-    <div className="hero-wave" ref={wrapRef} aria-hidden="true">
-      <canvas ref={bgRef} className="hero-wave-bg" />
-      <canvas ref={fxRef} className="hero-wave-fx" />
-      <canvas ref={topRef} className="hero-wave-top" />
-      <div className="hero-wave-grain" />
+    <div className="hero-wave hero-beach" ref={wrapRef} aria-hidden="true">
+      <canvas ref={canvasRef} className="hero-beach-canvas" />
       <div className="hero-wave-vig" />
+      <div className="hero-beach-scrim" />
     </div>
   )
 }

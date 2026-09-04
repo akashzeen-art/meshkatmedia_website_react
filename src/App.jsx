@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
-import SandPreloader from './components/SandPreloader.jsx'
+import LanternPreloader from './components/LanternPreloader.jsx'
 import About from './pages/About.jsx'
 import Contact from './pages/Contact.jsx'
 import Content from './pages/Content.jsx'
@@ -26,7 +26,7 @@ export default function App() {
     <>
       {booting ? (
         <div className={`sand-preloader-shell${leaving ? ' is-leaving' : ''}`}>
-          <SandPreloader onComplete={handleComplete} />
+          <LanternPreloader onComplete={handleComplete} />
         </div>
       ) : null}
 

@@ -21,11 +21,14 @@ function Header() {
 
   return (
     <header className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
-      <Link to="/" className="logo">
-        <span className="logo-mark" aria-hidden="true">
-          ◆
-        </span>
-        <span className="logo-text">Meshkatmedia</span>
+      <Link to="/" className="logo" aria-label="Meshkat Media home">
+        <img
+          className="logo-img"
+          src="/img/MeshkatMediaLogo.png"
+          alt="Meshkat Media"
+          width={180}
+          height={72}
+        />
       </Link>
 
       <nav className="nav-desktop" aria-label="Main navigation">
@@ -65,7 +68,7 @@ function Footer() {
   return (
     <footer className="site-footer">
       <span className="footer-text">© {year} {brand.name}</span>
-      <span className="footer-text">Sharjah — UAE</span>
+      <span className="footer-text">Sharjah — United Arab Emirates</span>
       <a className="footer-text" href={brand.emailHref}>
         {brand.email}
       </a>

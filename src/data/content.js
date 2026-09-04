@@ -23,10 +23,10 @@ export const navItems = [
 ]
 
 export const stats = [
-  { end: 30, label: 'Years of Experience', suffix: '+' },
-  { end: 500, label: 'Happy Clients', suffix: '' },
-  { end: 50, label: 'Countries Served', suffix: '' },
-  { end: 100, label: 'Team Members', suffix: '' },
+  { end: 25, label: 'Years of Experience', suffix: '+' },
+  { end: 22, label: 'Happy Clients', suffix: '' },
+  { end: 18, label: 'Countries Served', suffix: '' },
+  { end: 45, label: 'Team Members', suffix: '' },
 ]
 
 export const home = {
@@ -34,7 +34,7 @@ export const home = {
     title: 'About',
     paragraphs: [
       'Technology has revolutionized the world, and at Meshkat Media we believe in revolutionizing technology.',
-      'While we provide end-to-end solutions to telecommunication needs, we strive to develop platforms that enhance the very usage of technology. With a combined experience of 30+ years in the industry, the team has understood the gap in the telecom industry; the need for a company that provides marketing and technological requirements to their client.',
+      'While we provide end-to-end solutions to telecommunication needs, we strive to develop platforms that enhance the very usage of technology. With a combined experience of 25 years in the industry, the team has understood the gap in the telecom industry; the need for a company that provides marketing and technological requirements to their client.',
     ],
   },
   digitalMarketing: {
@@ -216,7 +216,7 @@ export const digitalMarketing = {
   ],
   whyTitle: 'Why Choose Meshkat Media?',
   why: [
-    '30+ years of combined industry experience',
+    '25 years of combined industry experience',
     'Proven track record of successful campaigns',
     'Cutting-edge technology and tools',
     'Dedicated account management',
