@@ -1,31 +1,53 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { useEffect } from 'react'
-import AOS from 'aos'
-import 'aos/dist/aos.css'
-import Navbar from './components/Navbar'
-import Footer from './components/Footer'
-import Home from './pages/Home'
-import About from './pages/About'
-import Services from './pages/Services'
-import Contact from './pages/Contact'
-import ScrollToTop from './components/ScrollToTop'
+import { useCallback, useState } from 'react'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import Layout from './components/Layout.jsx'
+import SandPreloader from './components/SandPreloader.jsx'
+import About from './pages/About.jsx'
+import Contact from './pages/Contact.jsx'
+import Content from './pages/Content.jsx'
+import DigitalMarketing from './pages/DigitalMarketing.jsx'
+import Home from './pages/Home.jsx'
+import NotFound from './pages/NotFound.jsx'
+import Partners from './pages/Partners.jsx'
+import Platform from './pages/Platform.jsx'
+import Services from './pages/Services.jsx'
+import SocialMediaMarketing from './pages/SocialMediaMarketing.jsx'
 
 export default function App() {
-  useEffect(() => {
-    AOS.init({ duration: 800, once: true })
+  const [booting, setBooting] = useState(true)
+  const [leaving, setLeaving] = useState(false)
+
+  const handleComplete = useCallback(() => {
+    setLeaving(true)
+    window.setTimeout(() => setBooting(false), 650)
   }, [])
 
   return (
-    <BrowserRouter>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/services" element={<Services />} />
-        <Route path="/contact" element={<Contact />} />
-      </Routes>
-      <Footer />
-      <ScrollToTop />
-    </BrowserRouter>
+    <>
+      {booting ? (
+        <div className={`sand-preloader-shell${leaving ? ' is-leaving' : ''}`}>
+          <SandPreloader onComplete={handleComplete} />
+        </div>
+      ) : null}
+
+      <div className={`site-boot${booting ? ' is-locked' : ''}`} aria-hidden={booting}>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<Home />} />
+              <Route path="about" element={<About />} />
+              <Route path="digital-marketing" element={<DigitalMarketing />} />
+              <Route path="social-media-marketing" element={<SocialMediaMarketing />} />
+              <Route path="services" element={<Services />} />
+              <Route path="platform" element={<Platform />} />
+              <Route path="content" element={<Content />} />
+              <Route path="partners" element={<Partners />} />
+              <Route path="contact" element={<Contact />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </div>
+    </>
   )
 }
