@@ -161,6 +161,167 @@ textarea {
   border-color: var(--ember);
 }
 
+/* ---------- Welcome intro (after lantern) ---------- */
+.welcome-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(255, 106, 26, 0.08), transparent 55%),
+    #07090d;
+  overflow: hidden;
+}
+
+.welcome-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.85rem;
+  padding: 1.5rem;
+  max-width: min(92vw, 42rem);
+  will-change: transform, opacity;
+}
+
+.welcome-block.is-entering {
+  animation: welcome-from-bl 1.05s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.welcome-block.is-centered {
+  transform: translate(0, 0);
+  opacity: 1;
+}
+
+@keyframes welcome-from-bl {
+  0% {
+    transform: translate(calc(-42vw + 0%), calc(38vh));
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+}
+
+.welcome-word {
+  margin: 0;
+  min-height: 1.15em;
+  font-family: var(--font-serif);
+  font-size: clamp(2.4rem, 7vw, 4.6rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f4efe6;
+  transition: opacity 0.1s ease;
+}
+
+.welcome-word.is-on {
+  opacity: 1;
+}
+
+.welcome-word.is-off {
+  opacity: 0;
+}
+
+.welcome-word.is-gone {
+  display: none;
+}
+
+.welcome-word.is-ar {
+  font-family: 'Noto Naskh Arabic', 'Bodoni Moda', serif;
+  letter-spacing: 0;
+  font-size: clamp(2.6rem, 7.5vw, 5rem);
+}
+
+.welcome-word.is-hi {
+  font-family: 'Noto Sans Devanagari', 'Bodoni Moda', serif;
+  letter-spacing: 0;
+}
+
+.welcome-brand {
+  margin: 0;
+  opacity: 0;
+  transform: translateY(0.6rem);
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.welcome-brand.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.welcome-brand-logo {
+  display: block;
+  width: clamp(11rem, 32vw, 18rem);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(255, 140, 50, 0));
+  transition: filter 0.7s ease;
+}
+
+.welcome-brand.is-visible .welcome-brand-logo {
+  animation: welcome-logo-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes welcome-logo-glow {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 18px rgba(255, 140, 50, 0.55))
+      drop-shadow(0 0 42px rgba(255, 106, 26, 0.4))
+      drop-shadow(0 0 72px rgba(255, 180, 80, 0.22));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 28px rgba(255, 170, 70, 0.85))
+      drop-shadow(0 0 64px rgba(255, 106, 26, 0.55))
+      drop-shadow(0 0 100px rgba(255, 200, 100, 0.35));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-brand.is-visible .welcome-brand-logo {
+    animation: none;
+    filter:
+      drop-shadow(0 0 22px rgba(255, 140, 50, 0.55))
+      drop-shadow(0 0 48px rgba(255, 106, 26, 0.35));
+  }
+}
+
+.welcome-tagline {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-mono);
+  font-size: clamp(0.72rem, 1.6vw, 0.92rem);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 214, 170, 0.88);
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition: opacity 0.5s ease 0.05s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s;
+}
+
+.welcome-tagline.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.welcome-tagline span {
+  margin: 0 0.55em;
+  color: var(--ember);
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-block.is-entering {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------- Noise ---------- */
 .noise {
   position: fixed;
@@ -285,7 +446,7 @@ body.cursor-down .cursor-dot {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, var(--bg) 0%, transparent 100%);
+  background: linear-gradient(to bottom, rgba(7, 9, 13, 0.55) 0%, transparent 100%);
   z-index: -1;
   pointer-events: none;
   opacity: 1;
@@ -350,6 +511,13 @@ body.cursor-down .cursor-dot {
   padding-bottom: 0.25rem;
   font-size: 0.88rem;
   letter-spacing: 0.14em;
+  color: #ffffff;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
+}
+
+.nav-desktop a:hover,
+.nav-desktop a.active {
+  color: #ffffff;
 }
 
 .nav-desktop a::after {
@@ -373,7 +541,7 @@ body.cursor-down .cursor-dot {
 .menu-toggle {
   width: 42px;
   height: 42px;
-  border: 1px solid var(--ink-faint);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   background: transparent;
   display: grid;
   place-content: center;
@@ -430,6 +598,12 @@ body.cursor-down .cursor-dot {
   border-bottom: 1px solid var(--ink-faint);
   font-size: 0.9rem;
   letter-spacing: 0.14em;
+  color: #ffffff;
+}
+
+.nav-mobile a:hover,
+.nav-mobile a.active {
+  color: #ffffff;
 }
 
 .nav-mobile a:last-child {
@@ -518,10 +692,10 @@ body.cursor-down .cursor-dot {
   z-index: 5;
   pointer-events: none;
   background: radial-gradient(
-    ellipse at 58% 38%,
-    transparent 20%,
-    rgba(6, 3, 1, 0.15) 55%,
-    rgba(4, 2, 0, 0.58) 100%
+    ellipse at 50% 45%,
+    transparent 55%,
+    rgba(7, 9, 13, 0.05) 82%,
+    rgba(7, 9, 13, 0.16) 100%
   );
 }
 
@@ -532,10 +706,9 @@ body.cursor-down .cursor-dot {
   pointer-events: none;
   background: linear-gradient(
     105deg,
-    rgba(8, 5, 3, 0.72) 0%,
-    rgba(8, 5, 3, 0.35) 38%,
-    rgba(8, 5, 3, 0.05) 62%,
-    transparent 78%
+    rgba(7, 9, 13, 0.36) 0%,
+    rgba(7, 9, 13, 0.1) 26%,
+    transparent 50%
   );
 }
 
@@ -629,9 +802,9 @@ body.cursor-down .cursor-dot {
   max-width: 540px;
   font-size: clamp(0.95rem, 1.6vw, 1.15rem);
   line-height: 1.85;
-  color: var(--ink);
+  color: #ffffff;
   margin-bottom: 3rem;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.45);
 }
 
 .ticket-zone {
@@ -665,16 +838,19 @@ body.cursor-down .cursor-dot {
   font-family: var(--font-serif);
   font-size: clamp(2.2rem, 5vw, 3.6rem);
   font-weight: 700;
-  color: var(--ink);
+  color: #ffffff;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
 }
 
 .counter-label {
   font-size: 0.62rem;
   letter-spacing: 0.22em;
-  color: var(--ink-muted);
+  color: #ffffff;
   text-transform: uppercase;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
+  opacity: 0.95;
 }
 
 .cta-btn {
@@ -685,7 +861,7 @@ body.cursor-down .cursor-dot {
   padding: 1.1rem 2.5rem;
   background: transparent;
   border: 1px solid var(--ember);
-  color: var(--ink);
+  color: #ffffff;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.2em;

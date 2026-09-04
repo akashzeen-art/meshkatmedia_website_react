@@ -7,6 +7,7 @@ void main() {
 }
 `
 
+/* Photo-like desert: pale blue sky + beige dunes, sharp horizon, no sea */
 const FS = `
 precision highp float;
 
@@ -46,150 +47,122 @@ float fbm(vec2 p) {
   return v;
 }
 
+/* Rolling dune silhouette height along x (matches photo horizon) */
+float duneHorizon(float x) {
+  float h = 0.02;
+  h += 0.11 * sin(x * 1.15 + 0.4);
+  h += 0.07 * sin(x * 2.35 - 1.1);
+  h += 0.035 * sin(x * 4.1 + 0.7);
+  h += 0.04 * (fbm(vec2(x * 1.4, 0.3)) - 0.5);
+  return h;
+}
+
+/* Soft dune heightfield on sand plane */
+float duneHeight(vec2 p) {
+  float d = 0.0;
+  d += 0.55 * sin(p.x * 1.6 + p.y * 0.35);
+  d += 0.35 * sin(p.x * 2.8 - p.y * 0.6 + 1.2);
+  d += 0.22 * sin(p.x * 0.9 + p.y * 1.1 - 0.5);
+  d += 0.45 * (fbm(p * 1.1) - 0.45);
+  return d;
+}
+
 void main() {
   vec2 fc = gl_FragCoord.xy;
   vec2 uv = (fc - 0.5 * uR) / uR.y;
   float aspect = uR.x / uR.y;
   float t = uT;
-  float s = sat(uS);
-
-  /* Warm cinematic palette — dawn easing toward soft midday */
-  vec3 skyZenith = mix(vec3(0.16, 0.20, 0.40), vec3(0.30, 0.52, 0.82), s);
-  vec3 skyMid    = mix(vec3(0.52, 0.40, 0.52), vec3(0.48, 0.70, 0.92), s);
-  vec3 skyHori   = mix(vec3(1.00, 0.58, 0.32), vec3(0.90, 0.80, 0.62), s);
-  vec3 sunCol    = mix(vec3(1.00, 0.70, 0.32), vec3(1.00, 0.95, 0.80), s);
-  vec3 seaDeep   = mix(vec3(0.06, 0.20, 0.36), vec3(0.04, 0.34, 0.55), s);
-  vec3 seaNear   = mix(vec3(0.16, 0.48, 0.54), vec3(0.10, 0.58, 0.64), s);
-  vec3 drySand   = mix(vec3(0.82, 0.64, 0.42), vec3(0.90, 0.76, 0.54), s);
-  vec3 wetSand   = mix(vec3(0.36, 0.28, 0.22), vec3(0.40, 0.34, 0.26), s);
-  vec3 foamCol   = vec3(0.94, 0.96, 0.97);
-
-  float horizon = 0.10;
-  float shore   = -0.015;
   float h = uv.y;
+
+  /* Sir’s reference: saturated cobalt / electric azure */
+  vec3 skyTop  = vec3(0.08, 0.32, 0.78);
+  vec3 skyMid  = vec3(0.12, 0.48, 0.92);
+  vec3 skyHori = vec3(0.22, 0.58, 0.96);
+
+  /* Warm light desert beige / tan */
+  vec3 sandLit  = vec3(0.91, 0.80, 0.62);
+  vec3 sandMid  = vec3(0.84, 0.70, 0.50);
+  vec3 sandShade= vec3(0.72, 0.56, 0.38);
 
   vec2 mUv = (uMouse - 0.5) * vec2(aspect, 1.0);
   float mouseActive = uMouseActive;
 
+  /* Sharp dune crest against sky — ~mid frame like reference */
+  float baseH = 0.02;
+  float horizon = baseH + duneHorizon(uv.x * 1.05);
+  float inSky = smoothstep(horizon - 0.004, horizon + 0.004, h);
+
   /* ----- Sky ----- */
-  float skyH = sat((h - horizon) / 0.78);
-  vec3 sky = mix(skyHori, skyMid, smoothstep(0.0, 0.42, skyH));
-  sky = mix(sky, skyZenith, smoothstep(0.28, 1.0, skyH));
+  float skyH = sat((h - horizon) / 0.85);
+  vec3 sky = mix(skyHori, skyMid, smoothstep(0.0, 0.4, skyH));
+  sky = mix(sky, skyTop, smoothstep(0.2, 1.0, skyH));
+  /* Keep blue rich — no pale wash */
+  sky = min(vec3(1.0), sky * vec3(1.02, 1.04, 1.08));
 
-  vec2 cUV = vec2(uv.x * 1.35 + t * 0.01, skyH * 2.4);
-  float clouds = smoothstep(0.50, 0.80, fbm(cUV * 1.7));
-  clouds *= smoothstep(0.0, 0.32, skyH) * 0.22;
-  sky = mix(sky, mix(sky, vec3(1.0, 0.93, 0.86), 0.55), clouds);
+  /* Nearly clear sky like the reference (minimal haze only) */
+  vec2 cUV = vec2(uv.x * 0.9 + t * 0.008, skyH * 1.8 + 0.15);
+  float haze = smoothstep(0.72, 0.95, fbm(cUV * 2.2)) * smoothstep(0.35, 0.0, skyH) * 0.08;
+  sky = mix(sky, skyHori * 1.05, haze);
 
-  vec2 sunPos = vec2(-0.38 + s * 0.5, horizon + 0.10 + s * 0.24);
-  float sd = length(uv - sunPos);
-  sky += sunCol * exp(-sd * 16.0) * 0.6;
-  sky += sunCol * exp(-sd * 5.5) * 0.25;
-  sky += sunCol * smoothstep(0.032, 0.0, sd) * 1.5;
-  sky += sunCol * exp(-abs(h - horizon) * 26.0) * 0.2;
+  /* ----- Sand dunes (fills everything below horizon — no gap / no sea) ----- */
+  float py = max(0.02, horizon - h);
+  float persp = 1.0 / (py + 0.04);
+  vec2 sUV = vec2(uv.x * persp * 0.7, persp * 0.55);
 
-  /* ----- Ocean (perspective) ----- */
-  float pyO = max(0.0015, horizon - h);
-  float perspO = 1.0 / (pyO + 0.07);
-  vec2 wUV = vec2(uv.x * perspO * 0.5, perspO * 0.32 + t * 0.07);
+  float dh = duneHeight(sUV);
+  float dhR = duneHeight(sUV + vec2(0.04, 0.0));
+  float dhU = duneHeight(sUV + vec2(0.0, 0.04));
+  vec3 N = normalize(vec3(dh - dhR, 0.35, dh - dhU));
+  vec3 L = normalize(vec3(-0.35, 0.85, 0.25));
+  float ndl = sat(dot(N, L) * 0.55 + 0.45);
 
-  float swell = sin(wUV.x * 3.2 + t * 0.65) * 0.5 + 0.5;
-  swell *= sin(wUV.y * 2.0 - t * 0.5) * 0.5 + 0.5;
-  float chop = noise(wUV * 5.5 + t * 0.18);
-  float wave = mix(swell, chop, 0.32);
+  vec3 sand = mix(sandShade, sandLit, ndl);
+  sand = mix(sand, sandMid, 0.25 + 0.2 * fbm(sUV * 2.0));
 
-  float depthGrad = sat((horizon - h) / max(0.001, horizon - shore));
-  vec3 water = mix(seaDeep, seaNear, pow(1.0 - depthGrad, 0.85));
-  water = mix(water, water * 1.14, wave * 0.2);
-  water = mix(water, skyHori * 0.9, smoothstep(shore, horizon, h) * 0.42);
-  water += sunCol * pow(noise(wUV * 12.0 + vec2(t * 0.35, 0.0)), 9.0) * 0.11 * (1.0 - depthGrad);
+  /* Wind ripples — dry sand texture, stronger in foreground */
+  float close = smoothstep(0.05, -0.7, h);
+  float ripples = sin(sUV.x * 28.0 + sUV.y * 6.0 + dh * 4.0) * 0.5 + 0.5;
+  ripples *= smoothstep(0.35, 0.75, fbm(sUV * 8.0));
+  sand = mix(sand, sand * 0.9 + sandLit * 0.1, ripples * close * 0.35);
+  sand += (noise(sUV * 55.0) - 0.5) * 0.04 * close;
 
-  float lines = sin(wUV.y * 16.0 - t * 1.5 + sin(wUV.x * 3.5) * 2.0);
-  water = mix(water, foamCol, smoothstep(0.82, 1.0, lines) * (1.0 - depthGrad) * 0.16);
+  /* Soft ridge highlight on dune crests */
+  float ridge = pow(sat(1.0 - abs(dh) * 1.8), 3.0);
+  sand = mix(sand, sandLit * 1.05, ridge * 0.2 * (0.4 + close * 0.6));
 
-  /* Sun path reflection on water */
-  float path = exp(-abs(uv.x - sunPos.x) * 7.0) * smoothstep(shore - 0.05, horizon, h);
-  water += sunCol * path * 0.14 * (1.0 - depthGrad * 0.5);
+  /* Keep bright high-key like the photo */
+  sand = max(sand, sandMid * 0.92);
 
-  /* ----- Sand (perspective) ----- */
-  float pyS = max(0.018, shore + 0.04 - h);
-  float perspS = 1.0 / (pyS + 0.04);
-  vec2 sUV = vec2(uv.x * perspS * 0.95, perspS * 0.6);
-
-  float n1 = fbm(sUV * 2.2);
-  float n2 = fbm(sUV * 8.0 + 9.0);
-  float n3 = noise(sUV * 36.0);
-  float n4 = noise(sUV * 85.0 + 4.0);
-
-  float wet = sat(smoothstep(-0.32, 0.0, h - shore) + (n1 - 0.5) * 0.1);
-  vec3 sand = mix(drySand, wetSand, wet);
-  sand *= 0.80 + n1 * 0.24 + n2 * 0.12;
-  sand *= 0.93 + n3 * 0.12;
-
-  float close = smoothstep(0.0, -0.55, h);
-  sand = mix(sand, sand * (0.88 + n4 * 0.24), close * 0.75);
-
-  float ridges = sin(sUV.x * 6.5 + n1 * 2.5) * 0.5 + 0.5;
-  sand = mix(sand, sand * 0.9, ridges * 0.12 * (1.0 - wet) * close);
-
-  sand *= 0.62 + n2 * 0.18 + wet * 0.06;
-  sand += sunCol * (1.0 - wet) * 0.07 * close;
-  sand += skyHori * wet * 0.12;
-  sand += sunCol * pow(noise(sUV * 18.0 + t * 0.08), 7.0) * wet * 0.1;
-
-  /* Shore foam */
-  float shoreY = shore + sin(uv.x * 5.5 + t * 0.85) * 0.014
-               + sin(uv.x * 13.0 - t * 1.3) * 0.006;
-  float foam = exp(-abs(h - shoreY) * 50.0);
-  float foamPulse = 0.5 + 0.5 * sin(uv.x * 9.0 - t * 2.0 + n1 * 3.5);
-  sand = mix(sand, foamCol, foam * foamPulse * 0.7);
-
-  float wash = exp(-abs(h - shoreY + 0.028) * 36.0);
-  wash *= 0.3 + 0.25 * sin(t * 1.4 + uv.x * 4.5);
-  sand = mix(sand, mix(wetSand, foamCol, 0.35), wash * 0.45);
-
-  /* Mouse: sand grains push away + soft crater (visible motion) */
-  float sandRegion = smoothstep(0.08, -0.05, h);
-  vec2 d = (uv - mUv) * vec2(1.0, 1.25);
+  /* Mouse grain on sand */
+  float sandRegion = 1.0 - inSky;
+  vec2 d = (uv - mUv) * vec2(1.0, 1.2);
   float dist = length(d);
-  float radius = 0.16;
+  float radius = 0.15;
   float influence = exp(-dist * dist / (radius * radius)) * mouseActive * sandRegion;
-  vec2 push = normalize(d + vec2(0.0001)) * influence * 0.055;
-  vec2 grainUV = sUV + push * perspS * 2.5;
-  float movedGrain = noise(grainUV * 70.0);
-  float movedGrain2 = noise(grainUV * 120.0 + 2.0);
-  sand = mix(sand, sand * (0.75 + movedGrain * 0.5), influence * 0.85);
-  sand += vec3(0.14, 0.10, 0.05) * influence * movedGrain2;
-  sand *= 1.0 - influence * 0.35 * (1.0 - smoothstep(0.0, radius * 0.55, dist));
-  float rim = influence * exp(-pow((dist - radius * 0.4) * 14.0, 2.0));
-  sand += drySand * rim * 0.55;
-  sand += vec3(0.2, 0.14, 0.06) * influence * (1.0 - wet) * 0.4;
+  vec2 push = normalize(d + vec2(0.0001)) * influence * 0.05;
+  vec2 grainUV = sUV + push * persp * 2.0;
+  float movedGrain = noise(grainUV * 65.0);
+  sand = mix(sand, sand * (0.85 + movedGrain * 0.3), influence * 0.75);
+  sand += sandLit * influence * noise(grainUV * 110.0) * 0.3;
 
-  /* ----- Compose bands ----- */
-  float skyM = smoothstep(horizon - 0.012, horizon + 0.003, h);
-  float sandM = 1.0 - smoothstep(shore - 0.03, shore + 0.025, h);
-  float waterM = sat(1.0 - skyM - sandM);
+  vec3 col = mix(sand, sky, inSky);
 
-  /* Soft shoreline merge */
-  float blend = smoothstep(shore - 0.05, shore + 0.02, h) * smoothstep(shore + 0.04, shore - 0.02, h);
-  vec3 shoreMix = mix(sand, water, 0.55);
+  /* Crisp dune edge against sky */
+  float edge = exp(-abs(h - horizon) * 90.0);
+  col = mix(col, mix(sandLit, skyHori, 0.35), edge * 0.15);
 
-  vec3 col = sky * skyM + water * waterM + sand * sandM;
-  col = mix(col, shoreMix, blend * 0.5);
-
-  /* Grade */
   col = pow(max(col, vec3(0.0)), vec3(0.94));
-  col *= vec3(1.03, 0.99, 0.95);
 
-  float vig = smoothstep(1.4, 0.3, length(uv * vec2(0.7, 1.05)));
-  col *= 0.78 + 0.22 * vig;
+  /* Barely any vignette — keep sky bright */
+  float vig = smoothstep(1.6, 0.5, length(uv * vec2(0.7, 1.0)));
+  col *= 0.98 + 0.02 * vig;
 
-  /* Left scrim so Meshkat type stays readable */
-  float scrim = smoothstep(0.65 * aspect, -0.2 * aspect, uv.x);
-  scrim *= smoothstep(0.5, -0.35, h) * 0.5;
-  col *= 1.0 - scrim;
+  /* Soft left darken for text — mainly on sand, not sky */
+  float scrim = smoothstep(0.7 * aspect, -0.15 * aspect, uv.x);
+  scrim *= smoothstep(0.15, -0.55, h) * 0.28;
+  col = mix(col, col * vec3(0.08, 0.09, 0.12), scrim);
 
-  col += (hash(fc + floor(t * 20.0)) - 0.5) * 0.016;
+  col += (hash(fc + floor(t * 18.0)) - 0.5) * 0.01;
 
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
@@ -200,7 +173,7 @@ function compile(gl, type, src) {
   gl.shaderSource(shader, src)
   gl.compileShader(shader)
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.error('Beach shader:', gl.getShaderInfoLog(shader))
+    console.error('Desert shader:', gl.getShaderInfoLog(shader))
     gl.deleteShader(shader)
     return null
   }
@@ -270,17 +243,9 @@ export default function HeroWaveCanvas() {
     let touching = false
     let moving = false
     let lastMoveAt = 0
-    let scrollT = 0
-    let scrollS = 0
     let fpsA = 0
     let fpsN = 0
     let lowT = 0
-
-    const updateScroll = () => {
-      const hero = wrap.closest('.hero')
-      const h = hero ? hero.offsetHeight : window.innerHeight
-      scrollT = Math.min(1, Math.max(0, window.scrollY / Math.max(h * 1.4, 1)))
-    }
 
     const resize = () => {
       const rect = wrap.getBoundingClientRect()
@@ -307,8 +272,7 @@ export default function HeroWaveCanvas() {
       }
       mx = (cx - rect.left) / Math.max(rect.width, 1)
       my = 1 - (cy - rect.top) / Math.max(rect.height, 1)
-      /* Sand occupies roughly lower half of the hero */
-      const overSand = my < 0.58
+      const overSand = my < 0.48
       if (active && overSand) {
         moving = true
         lastMoveAt = performance.now()
@@ -358,20 +322,15 @@ export default function HeroWaveCanvas() {
         } else lowT = 0
       }
 
-      scrollS += (scrollT - scrollS) * (1 - Math.exp(-dt * 3.5))
       smx += (mx - smx) * (1 - Math.exp(-dt * 16))
       smy += (my - smy) * (1 - Math.exp(-dt * 16))
 
       if (now - lastMoveAt > 80) moving = false
-
-      if (touching || moving) {
-        mouseActive = Math.min(1, Math.max(mouseActive, 0.85) + dt * 2)
-      } else {
-        mouseActive = Math.max(0, mouseActive - dt * 1.1)
-      }
+      if (touching || moving) mouseActive = Math.min(1, Math.max(mouseActive, 0.85) + dt * 2)
+      else mouseActive = Math.max(0, mouseActive - dt * 1.1)
 
       gl.uniform1f(uT, (now - t0) / 1000)
-      gl.uniform1f(uS, scrollS)
+      gl.uniform1f(uS, 0.0)
       gl.uniform2f(uMouse, smx, smy)
       gl.uniform1f(uMouseActive, mouseActive)
       gl.uniform1f(uQ, quality)
@@ -379,11 +338,8 @@ export default function HeroWaveCanvas() {
     }
 
     resize()
-    updateScroll()
     const ro = new ResizeObserver(resize)
     ro.observe(wrap)
-    window.addEventListener('scroll', updateScroll, { passive: true })
-    /* Window-level tracking so hero overlays don't block sand hover */
     window.addEventListener('mousemove', onMove, { passive: true })
     wrap.addEventListener('mouseleave', onLeave)
     window.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -394,7 +350,6 @@ export default function HeroWaveCanvas() {
     return () => {
       cancelAnimationFrame(raf)
       ro.disconnect()
-      window.removeEventListener('scroll', updateScroll)
       window.removeEventListener('mousemove', onMove)
       wrap.removeEventListener('mouseleave', onLeave)
       window.removeEventListener('touchstart', onTouchStart)

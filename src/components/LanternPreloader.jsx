@@ -1,6 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-const DURATION_MS = 6000
+const LANTERN_MS = 6000
+
+const WELCOMES = [
+  { text: 'Welcome', lang: 'en', dir: 'ltr' },
+  { text: 'Bienvenue', lang: 'fr', dir: 'ltr' },
+  { text: 'Bienvenido', lang: 'es', dir: 'ltr' },
+  { text: 'مرحباً', lang: 'ar', dir: 'rtl' },
+  { text: 'स्वागत है', lang: 'hi', dir: 'ltr' },
+]
+
+const BLINK_MS = 520
+const HOLD_AFTER_MS = 1400
 
 function rand(min, max) {
   return min + Math.random() * (max - min)
@@ -22,24 +33,106 @@ export default function LanternPreloader({ onComplete }) {
   const canvasRef = useRef(null)
   const onCompleteRef = useRef(onComplete)
   const finishRef = useRef(null)
+  const timersRef = useRef([])
+
+  const [phase, setPhase] = useState('lantern') // lantern | welcome | done
+  const [welcomeStep, setWelcomeStep] = useState('enter') // enter | cycle | brand | tagline
+  const [welcomeIndex, setWelcomeIndex] = useState(0)
+  const [blinkOn, setBlinkOn] = useState(true)
+  const [showBrand, setShowBrand] = useState(false)
+  const [showTagline, setShowTagline] = useState(false)
 
   useEffect(() => {
     onCompleteRef.current = onComplete
   }, [onComplete])
 
+  const clearTimers = () => {
+    timersRef.current.forEach((id) => window.clearTimeout(id))
+    timersRef.current = []
+  }
+
+  const schedule = (fn, ms) => {
+    const id = window.setTimeout(fn, ms)
+    timersRef.current.push(id)
+    return id
+  }
+
+  const finish = () => {
+    clearTimers()
+    setPhase('done')
+    onCompleteRef.current?.()
+  }
+
+  /* Welcome sequence after lantern */
   useEffect(() => {
+    if (phase !== 'welcome') return undefined
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduced) {
+      setWelcomeStep('tagline')
+      setWelcomeIndex(0)
+      setBlinkOn(true)
+      setShowBrand(true)
+      setShowTagline(true)
+      schedule(finish, 900)
+      return () => clearTimers()
+    }
+
+    setWelcomeStep('enter')
+    setWelcomeIndex(0)
+    setBlinkOn(true)
+    setShowBrand(false)
+    setShowTagline(false)
+
+    /* After BL → center: Welcome once, then FR / ES / AR / HI, then logo */
+    schedule(() => {
+      setWelcomeStep('cycle')
+
+      let i = 0
+      const nextLang = () => {
+        setBlinkOn(false)
+        schedule(() => {
+          i += 1
+          if (i < WELCOMES.length) {
+            setWelcomeIndex(i)
+            setBlinkOn(true)
+            schedule(nextLang, BLINK_MS)
+          } else {
+            setBlinkOn(false)
+            setWelcomeStep('brand')
+            setShowBrand(true)
+            schedule(() => {
+              setWelcomeStep('tagline')
+              setShowTagline(true)
+              schedule(finish, HOLD_AFTER_MS)
+            }, 700)
+          }
+        }, 100)
+      }
+
+      /* Hold English Welcome once, then cycle other languages */
+      schedule(nextLang, BLINK_MS + 200)
+    }, 1100)
+
+    return () => clearTimers()
+  }, [phase])
+
+  /* Lantern canvas */
+  useEffect(() => {
+    if (phase !== 'lantern') return undefined
+
     const canvas = canvasRef.current
     if (!canvas) return undefined
 
     const ctx = canvas.getContext('2d', { alpha: false })
     if (!ctx) {
-      onCompleteRef.current?.()
+      setPhase('welcome')
       return undefined
     }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reduced) {
-      const timer = window.setTimeout(() => onCompleteRef.current?.(), 400)
+      const timer = window.setTimeout(() => setPhase('welcome'), 400)
       return () => window.clearTimeout(timer)
     }
 
@@ -62,13 +155,17 @@ export default function LanternPreloader({ onComplete }) {
     let flamePulse = 0
     let launched = false
 
-    const finish = () => {
+    const endLantern = () => {
       if (finished) return
       finished = true
       cancelAnimationFrame(raf)
-      onCompleteRef.current?.()
+      setPhase('welcome')
     }
-    finishRef.current = finish
+    finishRef.current = () => {
+      finished = true
+      cancelAnimationFrame(raf)
+      finish()
+    }
 
     const resize = () => {
       w = window.innerWidth
@@ -141,7 +238,6 @@ export default function LanternPreloader({ onComplete }) {
     }
 
     const lanternProgress = (t) => {
-      // 0–0.18 sit & warm up, 0.18–0.22 ignition, 0.22–1.0 climb
       if (t < 0.18) return 0
       if (t < 0.22) return easeInQuad((t - 0.18) / 0.04) * 0.02
       const climb = (t - 0.22) / 0.78
@@ -149,7 +245,7 @@ export default function LanternPreloader({ onComplete }) {
     }
 
     const update = (dt, elapsed) => {
-      const t = Math.min(1, elapsed / DURATION_MS)
+      const t = Math.min(1, elapsed / LANTERN_MS)
       flamePulse += dt * 14
 
       const progress = lanternProgress(t)
@@ -160,7 +256,6 @@ export default function LanternPreloader({ onComplete }) {
 
       if (t >= 0.18) launched = true
 
-      /* Last second: full fire release */
       const finale = t > 0.8 ? easeOutCubic(Math.min(1, (t - 0.8) / 0.12)) : 0
 
       let intensity =
@@ -236,7 +331,6 @@ export default function LanternPreloader({ onComplete }) {
       ctx.fillStyle = g
       ctx.fillRect(0, 0, w, h)
 
-      // Soft horizon glow
       const hg = ctx.createRadialGradient(w * 0.5, h * 1.05 + cameraY * 0.15, 0, w * 0.5, h * 1.05, w * 0.7)
       hg.addColorStop(0, 'rgba(80, 40, 20, 0.22)')
       hg.addColorStop(1, 'rgba(0, 0, 0, 0)')
@@ -293,7 +387,6 @@ export default function LanternPreloader({ onComplete }) {
       const plumeH = 55 * intensity * flicker
       const plumeW = 18 * Math.min(intensity, 4.5)
 
-      // Downward rocket plume — expands hard during finale
       const plume = ctx.createRadialGradient(lx, ly + 18, 2, lx, ly + plumeH * 0.9, Math.max(70, 40 * intensity))
       plume.addColorStop(0, `rgba(255, 250, 210, ${Math.min(1, 0.85 * intensity)})`)
       plume.addColorStop(0.2, `rgba(255, 180, 60, ${Math.min(1, 0.55 * intensity)})`)
@@ -304,7 +397,6 @@ export default function LanternPreloader({ onComplete }) {
       ctx.ellipse(lx, ly + plumeH * 0.7, plumeW, plumeH, 0, 0, Math.PI * 2)
       ctx.fill()
 
-      // Extra wide fire bloom when intensity spikes
       if (intensity > 2) {
         const burst = ctx.createRadialGradient(lx, ly + 50, 4, lx, ly + 90, 120 + intensity * 30)
         burst.addColorStop(0, `rgba(255, 220, 120, ${0.45})`)
@@ -360,7 +452,6 @@ export default function LanternPreloader({ onComplete }) {
 
       drawFlame(0, 28, intensity)
 
-      // Cap
       ctx.fillStyle = '#2a1c12'
       ctx.beginPath()
       ctx.moveTo(-22, -38)
@@ -370,14 +461,12 @@ export default function LanternPreloader({ onComplete }) {
       ctx.closePath()
       ctx.fill()
 
-      // Top ring
       ctx.strokeStyle = '#c89a4a'
       ctx.lineWidth = 2
       ctx.beginPath()
       ctx.ellipse(0, -32, 20, 4, 0, 0, Math.PI * 2)
       ctx.stroke()
 
-      // Paper body glow
       const body = ctx.createLinearGradient(-28, -30, 28, 40)
       body.addColorStop(0, '#5a3018')
       body.addColorStop(0.35, `rgba(255, ${140 + intensity * 40}, 50, 0.95)`)
@@ -395,7 +484,6 @@ export default function LanternPreloader({ onComplete }) {
       ctx.closePath()
       ctx.fill()
 
-      // Inner flame light on paper
       const inner = ctx.createRadialGradient(0, 8, 2, 0, 10, 36)
       inner.addColorStop(0, `rgba(255, 240, 180, ${0.55 * intensity})`)
       inner.addColorStop(0.5, `rgba(255, 140, 40, ${0.25 * intensity})`)
@@ -405,7 +493,6 @@ export default function LanternPreloader({ onComplete }) {
       ctx.ellipse(0, 8, 18, 28, 0, 0, Math.PI * 2)
       ctx.fill()
 
-      // Frame ribs
       ctx.strokeStyle = `rgba(90, 50, 20, ${0.55})`
       ctx.lineWidth = 1.2
       ;[-14, 0, 14].forEach((x) => {
@@ -418,14 +505,12 @@ export default function LanternPreloader({ onComplete }) {
       ctx.ellipse(0, 4, 27, 6, 0, 0, Math.PI * 2)
       ctx.stroke()
 
-      // Bottom rim
       ctx.strokeStyle = '#b8893f'
       ctx.lineWidth = 2
       ctx.beginPath()
       ctx.ellipse(0, 38, 24, 5, 0, 0, Math.PI * 2)
       ctx.stroke()
 
-      // Tiny hanging wire / tassel base
       ctx.strokeStyle = '#8a6a3a'
       ctx.lineWidth = 1
       ctx.beginPath()
@@ -443,7 +528,6 @@ export default function LanternPreloader({ onComplete }) {
       ctx.fillStyle = vg
       ctx.fillRect(0, 0, w, h)
 
-      /* Fade after fire finale */
       if (t > 0.9) {
         const fade = easeOutCubic((t - 0.9) / 0.1)
         ctx.fillStyle = `rgba(7, 9, 13, ${fade})`
@@ -460,7 +544,7 @@ export default function LanternPreloader({ onComplete }) {
       const elapsed = now - startTime
       const dt = Math.min((now - lastTime) / 1000, 0.033)
       lastTime = now
-      const t = Math.min(1, elapsed / DURATION_MS)
+      const t = Math.min(1, elapsed / LANTERN_MS)
 
       update(dt, elapsed)
       drawSky(elapsed)
@@ -468,15 +552,15 @@ export default function LanternPreloader({ onComplete }) {
       drawLantern(elapsed, t)
       drawVignette(t)
 
-      if (elapsed >= DURATION_MS) {
-        finish()
+      if (elapsed >= LANTERN_MS) {
+        endLantern()
         return
       }
       raf = requestAnimationFrame(tick)
     }
 
     const onSkip = (event) => {
-      if (event.key === 'Escape' || event.type === 'click') finish()
+      if (event.key === 'Escape') finishRef.current?.()
     }
 
     resize()
@@ -484,7 +568,7 @@ export default function LanternPreloader({ onComplete }) {
     window.addEventListener('keydown', onSkip)
 
     raf = requestAnimationFrame(tick)
-    const safety = window.setTimeout(finish, DURATION_MS + 2000)
+    const safety = window.setTimeout(endLantern, LANTERN_MS + 2000)
 
     return () => {
       finished = true
@@ -494,11 +578,57 @@ export default function LanternPreloader({ onComplete }) {
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', onSkip)
     }
-  }, [])
+  }, [phase])
+
+  /* Skip during welcome */
+  useEffect(() => {
+    if (phase !== 'welcome') return undefined
+    finishRef.current = finish
+    const onKey = (e) => {
+      if (e.key === 'Escape') finish()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase])
+
+  const current = WELCOMES[welcomeIndex]
 
   return (
     <div className="sand-preloader" role="status" aria-live="polite" aria-label="Loading Meshkat Media">
-      <canvas ref={canvasRef} className="lantern-preloader-canvas" />
+      {phase === 'lantern' ? (
+        <canvas ref={canvasRef} className="lantern-preloader-canvas" />
+      ) : (
+        <div className="welcome-stage" aria-hidden={phase === 'done'}>
+          <div
+            className={`welcome-block${welcomeStep !== 'enter' ? ' is-centered' : ''}${
+              welcomeStep === 'enter' ? ' is-entering' : ''
+            }`}
+          >
+            <p
+              className={`welcome-word${blinkOn ? ' is-on' : ' is-off'}${
+                showBrand ? ' is-gone' : ''
+              }${current.lang === 'ar' ? ' is-ar' : ''}${current.lang === 'hi' ? ' is-hi' : ''}`}
+              lang={current.lang}
+              dir={current.dir}
+            >
+              {current.text}
+            </p>
+
+            <h1 className={`welcome-brand${showBrand ? ' is-visible' : ''}`}>
+              <img
+                className="welcome-brand-logo"
+                src="/img/MeshkatMediaLogo.png"
+                alt="Meshkat Media"
+              />
+            </h1>
+
+            <p className={`welcome-tagline${showTagline ? ' is-visible' : ''}`}>
+              Connect <span aria-hidden="true">|</span> Create <span aria-hidden="true">|</span> Grow
+            </p>
+          </div>
+        </div>
+      )}
+
       <button type="button" className="sand-skip" onClick={() => finishRef.current?.()}>
         Skip
       </button>
