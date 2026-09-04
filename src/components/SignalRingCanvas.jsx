@@ -4,9 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 
-const FRAG_SCALE = 28
-const TORUS_R = 1.85
-const TORUS_r = 0.38
+const FRAG_SCALE = 26
 
 function hash2(px, py) {
   const a = Math.sin(px * 127.1 + py * 311.7) * 43758.5453
@@ -57,8 +55,27 @@ function smoothstep(min, max, v) {
   return t * t * (3 - 2 * t)
 }
 
-function buildFragments(ringGroup) {
-  const baseGeo = new THREE.TorusGeometry(TORUS_R, TORUS_r, 72, 96)
+/** Classic paper-lantern silhouette (radius, height). */
+function createLanternGeometry(radial = 56, scaled = 1) {
+  const pts = [
+    [0.12, -1.42],
+    [0.38, -1.28],
+    [0.52, -1.12],
+    [0.72, -0.72],
+    [0.92, -0.28],
+    [1.0, 0.05],
+    [0.94, 0.42],
+    [0.78, 0.82],
+    [0.55, 1.12],
+    [0.4, 1.28],
+    [0.22, 1.4],
+    [0.06, 1.48],
+  ].map(([r, y]) => new THREE.Vector2(r * scaled, y * scaled))
+  return new THREE.LatheGeometry(pts, radial)
+}
+
+function buildFragments(lanternGroup) {
+  const baseGeo = createLanternGeometry(48, 1.05)
   const nonIndexed = baseGeo.toNonIndexed()
   baseGeo.dispose()
 
@@ -78,11 +95,11 @@ function buildFragments(ringGroup) {
   }
 
   const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(0x1c2430),
-    roughness: 0.7,
-    metalness: 0.4,
-    emissive: new THREE.Color(0x0a1018),
-    emissiveIntensity: 0.3,
+    color: new THREE.Color(0x3a2414),
+    roughness: 0.82,
+    metalness: 0.12,
+    emissive: new THREE.Color(0x4a2208),
+    emissiveIntensity: 0.35,
     side: THREE.DoubleSide,
   })
 
@@ -96,35 +113,49 @@ function buildFragments(ringGroup) {
     const nArr = new Float32Array(vc * 3)
     const uvArr = new Float32Array(vc * 2)
     let vi = 0
+    let cx = 0
+    let cy = 0
+    let cz = 0
+    let nx = 0
+    let ny = 0
+    let nz = 0
+
     for (const tri of triList) {
       for (let v = 0; v < 3; v++) {
         const sv = tri * 3 + v
-        pArr[vi * 3] = pos[sv * 3]
-        pArr[vi * 3 + 1] = pos[sv * 3 + 1]
-        pArr[vi * 3 + 2] = pos[sv * 3 + 2]
+        const x = pos[sv * 3]
+        const y = pos[sv * 3 + 1]
+        const z = pos[sv * 3 + 2]
+        pArr[vi * 3] = x
+        pArr[vi * 3 + 1] = y
+        pArr[vi * 3 + 2] = z
         nArr[vi * 3] = nrm[sv * 3]
         nArr[vi * 3 + 1] = nrm[sv * 3 + 1]
         nArr[vi * 3 + 2] = nrm[sv * 3 + 2]
         uvArr[vi * 2] = uvData[sv * 2]
         uvArr[vi * 2 + 1] = uvData[sv * 2 + 1]
+        cx += x
+        cy += y
+        cz += z
+        nx += nrm[sv * 3]
+        ny += nrm[sv * 3 + 1]
+        nz += nrm[sv * 3 + 2]
         vi++
       }
     }
 
-    const phi = seed[0] * TWO_PI
-    const theta = seed[1] * TWO_PI
-    const cx = (TORUS_R + TORUS_r * Math.cos(theta)) * Math.cos(phi)
-    const cy = (TORUS_R + TORUS_r * Math.cos(theta)) * Math.sin(phi)
-    const cz = TORUS_r * Math.sin(theta)
-    const cellCenter = new THREE.Vector3(cx, cy, cz)
-    const majorPt = new THREE.Vector3(TORUS_R * Math.cos(phi), TORUS_R * Math.sin(phi), 0)
-    const cellNormal = cellCenter.clone().sub(majorPt).normalize()
+    const cellCenter = new THREE.Vector3(cx / vi, cy / vi, cz / vi)
+    const cellNormal = new THREE.Vector3(nx / vi, ny / vi, nz / vi)
+    if (cellNormal.lengthSq() < 1e-6) {
+      cellNormal.set(cellCenter.x, 0, cellCenter.z)
+    }
+    cellNormal.normalize()
 
-    const SHRINK = 0.965
+    const SHRINK = 0.96
     for (let i = 0; i < pArr.length; i += 3) {
-      pArr[i] = (pArr[i] - cx) * SHRINK
-      pArr[i + 1] = (pArr[i + 1] - cy) * SHRINK
-      pArr[i + 2] = (pArr[i + 2] - cz) * SHRINK
+      pArr[i] = (pArr[i] - cellCenter.x) * SHRINK
+      pArr[i + 1] = (pArr[i + 1] - cellCenter.y) * SHRINK
+      pArr[i + 2] = (pArr[i + 2] - cellCenter.z) * SHRINK
     }
 
     const geo = new THREE.BufferGeometry()
@@ -133,22 +164,22 @@ function buildFragments(ringGroup) {
     geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2))
 
     const rnd = hash2(seed[0] * 137.53, seed[1] * 137.53)
-    const up = Math.abs(cellNormal.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0)
+    const up = Math.abs(cellNormal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
     const tang = new THREE.Vector3().crossVectors(cellNormal, up).normalize()
     const bitang = new THREE.Vector3().crossVectors(cellNormal, tang)
     const aa = rnd[0] * TWO_PI
     const rotAxis = tang.clone().multiplyScalar(Math.cos(aa)).addScaledVector(bitang, Math.sin(aa)).normalize()
 
     const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.copy(cellCenter).addScaledVector(cellNormal, 0.012)
+    mesh.position.copy(cellCenter).addScaledVector(cellNormal, 0.01)
     mesh.userData = {
-      cellCenter,
-      cellNormal,
+      cellCenter: cellCenter.clone(),
+      cellNormal: cellNormal.clone(),
       rotAxis,
-      maxAngle: 0.65 + rnd[1] * 0.85,
+      maxAngle: 0.55 + rnd[1] * 0.9,
       lift: 0,
     }
-    ringGroup.add(mesh)
+    lanternGroup.add(mesh)
     list.push(mesh)
   }
 
@@ -157,8 +188,7 @@ function buildFragments(ringGroup) {
 }
 
 /**
- * Meshkat signal ring — connectivity artifact behind post-hero content.
- * Hover peels the shell open; scroll orbits the ring through stages.
+ * Interactive 3D lantern — paper shell peels on hover, ember wireframe + flame within.
  */
 export default function SignalRingCanvas({ sectionRef }) {
   const canvasRef = useRef(null)
@@ -168,7 +198,6 @@ export default function SignalRingCanvas({ sectionRef }) {
     const canvas = canvasRef.current
     const host = hostRef.current
     if (!canvas || !host) return undefined
-
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
 
     const mobile = window.matchMedia('(max-width: 768px), (pointer: coarse)').matches
@@ -178,12 +207,12 @@ export default function SignalRingCanvas({ sectionRef }) {
 
     const scrollGroup = new THREE.Group()
     scene.add(scrollGroup)
-    const ringGroup = new THREE.Group()
-    scrollGroup.add(ringGroup)
-    scrollGroup.rotation.x = 0.18
+    const lanternGroup = new THREE.Group()
+    scrollGroup.add(lanternGroup)
+    scrollGroup.rotation.x = 0.12
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100)
-    camera.position.z = 6.4
+    camera.position.z = 5.6
 
     const renderer = new THREE.WebGLRenderer({
       canvas,
@@ -192,29 +221,33 @@ export default function SignalRingCanvas({ sectionRef }) {
     })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.25 : 1.75))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.05
+    renderer.toneMappingExposure = 1.08
     renderer.outputColorSpace = THREE.SRGBColorSpace
 
     const composer = new EffectComposer(renderer)
     composer.addPass(new RenderPass(scene, camera))
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(1, 1),
-      mobile ? 0.48 : 0.75,
-      0.4,
-      0.58,
+      mobile ? 0.55 : 0.85,
+      0.42,
+      0.5,
     )
     composer.addPass(bloomPass)
 
-    scene.add(new THREE.AmbientLight(0xffe8d0, 0.34))
-    const key = new THREE.DirectionalLight(0xffd8b0, 2.5)
+    scene.add(new THREE.AmbientLight(0xffe8d0, 0.28))
+    const key = new THREE.DirectionalLight(0xffd8b0, 1.8)
     key.position.set(3.2, 4.2, 5)
     scene.add(key)
-    const fill = new THREE.DirectionalLight(0x8899cc, 0.45)
+    const fill = new THREE.DirectionalLight(0x6a7a99, 0.4)
     fill.position.set(-4, -2, -3)
     scene.add(fill)
-    const ember = new THREE.PointLight(0xff6a1a, 1.4, 12)
-    ember.position.set(0, 0.4, 2.2)
-    scene.add(ember)
+
+    const flameLight = new THREE.PointLight(0xff6a1a, 2.2, 10, 2)
+    flameLight.position.set(0, -0.15, 0)
+    lanternGroup.add(flameLight)
+    const flameCore = new THREE.PointLight(0xffe0a0, 1.2, 4, 2)
+    flameCore.position.set(0, 0.05, 0)
+    lanternGroup.add(flameCore)
 
     const wireMaterial = new THREE.ShaderMaterial({
       vertexShader: `
@@ -233,28 +266,34 @@ export default function SignalRingCanvas({ sectionRef }) {
           return 1.0 - min(a.x, min(a.y, a.z));
         }
         void main() {
-          float wf = wireMask(vBary, 1.55);
-          vec3 col = mix(vec3(0.04, 0.05, 0.08), vec3(1.0, 0.38, 0.08), wf);
-          col = mix(col, vec3(1.0, 0.7, 0.25) * 2.0, wf * 0.5);
+          float wf = wireMask(vBary, 1.5);
+          vec3 col = mix(vec3(0.08, 0.03, 0.01), vec3(1.0, 0.4, 0.08), wf);
+          col = mix(col, vec3(1.0, 0.78, 0.3) * 2.1, wf * 0.55);
           gl_FragColor = vec4(col, 1.0);
         }
       `,
       side: THREE.DoubleSide,
     })
 
-    const core = new THREE.Mesh(
-      addBarycentricCoords(new THREE.TorusGeometry(TORUS_R, TORUS_r * 0.92, 56, 72)),
-      wireMaterial,
-    )
-    ringGroup.add(core)
+    const coreGeo = createLanternGeometry(40, 0.92)
+    const core = new THREE.Mesh(addBarycentricCoords(coreGeo), wireMaterial)
+    lanternGroup.add(core)
 
-    const { list: fragments, mat: fragMat } = buildFragments(ringGroup)
+    /* Soft flame orb inside */
+    const flameMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffc060 }),
+    )
+    flameMesh.position.set(0, -0.05, 0)
+    lanternGroup.add(flameMesh)
+
+    const { list: fragments, mat: fragMat } = buildFragments(lanternGroup)
 
     const rcMesh = new THREE.Mesh(
-      new THREE.TorusGeometry(TORUS_R, TORUS_r, 48, 64),
+      createLanternGeometry(32, 1.05),
       new THREE.MeshBasicMaterial({ visible: false }),
     )
-    ringGroup.add(rcMesh)
+    lanternGroup.add(rcMesh)
 
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2(-999, -999)
@@ -262,8 +301,8 @@ export default function SignalRingCanvas({ sectionRef }) {
     const localHover = new THREE.Vector3()
 
     const params = {
-      hoverRadius: mobile ? 0.95 : 0.78,
-      liftDist: 0.3,
+      hoverRadius: mobile ? 1.15 : 0.95,
+      liftDist: 0.38,
       liftSpeedUp: 0.16,
       liftSpeedDown: 0.055,
     }
@@ -314,37 +353,42 @@ export default function SignalRingCanvas({ sectionRef }) {
       last = now
 
       smoothP += (scrollP - smoothP) * (1 - Math.exp(-dt * 3.2))
-
-      /* Stage motion: center → left → right */
       const p = smoothP
       const stage = p * 2
       let px = 0
-      let rx = 0.18
+      let rx = 0.12
       let ry = 0
       let rz = 0
       if (stage < 1) {
         const t = stage
-        px = THREE.MathUtils.lerp(0, -2.1, t)
-        rx = THREE.MathUtils.lerp(0.18, Math.PI * 0.42, t)
-        ry = THREE.MathUtils.lerp(0, -Math.PI * 0.55, t)
-        rz = THREE.MathUtils.lerp(0, Math.PI * 0.2, t)
+        px = THREE.MathUtils.lerp(0, -2.0, t)
+        rx = THREE.MathUtils.lerp(0.12, 0.35, t)
+        ry = THREE.MathUtils.lerp(0, -Math.PI * 0.45, t)
+        rz = THREE.MathUtils.lerp(0, 0.18, t)
       } else {
         const t = stage - 1
-        px = THREE.MathUtils.lerp(-2.1, 2.1, t)
-        rx = THREE.MathUtils.lerp(Math.PI * 0.42, -Math.PI * 0.4, t)
-        ry = THREE.MathUtils.lerp(-Math.PI * 0.55, Math.PI * 0.55, t)
-        rz = THREE.MathUtils.lerp(Math.PI * 0.2, -Math.PI * 0.2, t)
+        px = THREE.MathUtils.lerp(-2.0, 2.0, t)
+        rx = THREE.MathUtils.lerp(0.35, -0.2, t)
+        ry = THREE.MathUtils.lerp(-Math.PI * 0.45, Math.PI * 0.5, t)
+        rz = THREE.MathUtils.lerp(0.18, -0.15, t)
       }
       scrollGroup.position.x = px
       scrollGroup.rotation.set(rx, ry, rz)
 
-      if (smoothP < 0.03) idleY += dt * 0.28
-      ringGroup.rotation.y = idleY
+      if (smoothP < 0.03) idleY += dt * 0.35
+      lanternGroup.rotation.y = idleY
+
+      /* Living flame */
+      const flicker = 0.85 + Math.sin(now * 0.012) * 0.12 + Math.sin(now * 0.031) * 0.08
+      flameLight.intensity = (1.8 + hover.active * 1.2) * flicker
+      flameCore.intensity = (1.0 + hover.active * 0.6) * flicker
+      flameMesh.scale.setScalar(0.85 + flicker * 0.25 + hover.active * 0.15)
+      flameMesh.position.y = -0.05 + Math.sin(now * 0.008) * 0.03
 
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObject(rcMesh)
       if (hits.length > 0) {
-        ringGroup.worldToLocal(localHover.copy(hits[0].point))
+        lanternGroup.worldToLocal(localHover.copy(hits[0].point))
         hover.point.copy(localHover)
         hover.active = Math.min(hover.active + dt * 5, 1)
       } else {
@@ -359,13 +403,16 @@ export default function SignalRingCanvas({ sectionRef }) {
           target = (1 - smoothstep(0.35, params.hoverRadius, dist)) * hover.active
         }
         const speed = target > frag.userData.lift ? params.liftSpeedUp : params.liftSpeedDown
-        frag.userData.lift = THREE.MathUtils.lerp(frag.userData.lift, target, 1 - Math.exp(-speed * 60 * dt))
+        frag.userData.lift = THREE.MathUtils.lerp(
+          frag.userData.lift,
+          target,
+          1 - Math.exp(-speed * 60 * dt),
+        )
         const lift = frag.userData.lift
-        frag.position.copy(cellCenter).addScaledVector(cellNormal, 0.012 + lift * params.liftDist)
+        frag.position.copy(cellCenter).addScaledVector(cellNormal, 0.01 + lift * params.liftDist)
         frag.quaternion.setFromAxisAngle(rotAxis, lift * maxAngle)
       }
 
-      ember.intensity = 1.2 + hover.active * 0.8 + Math.sin(now * 0.002) * 0.15
       composer.render()
     }
 
@@ -386,12 +433,12 @@ export default function SignalRingCanvas({ sectionRef }) {
       window.removeEventListener('resize', updateScroll)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('touchmove', onTouch)
-      fragments.forEach((m) => {
-        m.geometry.dispose()
-      })
+      fragments.forEach((m) => m.geometry.dispose())
       fragMat.dispose()
       core.geometry.dispose()
       wireMaterial.dispose()
+      flameMesh.geometry.dispose()
+      flameMesh.material.dispose()
       rcMesh.geometry.dispose()
       rcMesh.material.dispose()
       composer.dispose()

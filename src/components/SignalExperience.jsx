@@ -46,7 +46,7 @@ const stages = [
         to scale.
       </>
     ),
-    body: 'Hover the ring to peel the shell and reveal the luminous core. Scroll to orbit through Meshkat’s world — connect, create, grow.',
+    body: 'Hover the lantern to peel its paper shell and reveal the luminous wireframe within. Scroll to orbit through Meshkat’s world — connect, create, grow.',
     features: [
       'Telecom platforms · VAS · messaging',
       '360° digital & social marketing',
@@ -57,7 +57,7 @@ const stages = [
 ]
 
 /**
- * Sticky signal-ring backdrop from after hero through the rest of the page.
+ * Sticky 3D lantern backdrop from after hero through the rest of the page.
  * Pass remaining homepage sections as children.
  */
 export default function SignalExperience({ children }) {
@@ -102,14 +102,14 @@ export default function SignalExperience({ children }) {
   }, [])
 
   return (
-    <section className="signal-experience" ref={sectionRef} aria-label="Signal experience">
+    <section className="signal-experience" ref={sectionRef} aria-label="Lantern experience">
       <div className="signal-sticky">
         <SignalRingCanvas sectionRef={sectionRef} />
         <div className="signal-hud" aria-hidden="true">
           <div className="signal-hud-corner signal-hud-tl" />
           <div className="signal-hud-corner signal-hud-br" />
           <p className={`signal-hint${showHint ? ' is-visible' : ''}`}>
-            ↑ hover the ring to open the network ↑
+            ↑ hover the lantern to open the light ↑
           </p>
           <div className="signal-stage-dots">
             {stages.map((s, i) => (
