@@ -361,9 +361,10 @@ export default function SignalRingCanvas({ sectionRef }) {
       let rz = 0
       if (stage < 1) {
         const t = stage
+        /* Hero: lantern centered under title; then drift left as scroll starts */
         px = THREE.MathUtils.lerp(0, -2.0, t)
-        rx = THREE.MathUtils.lerp(0.12, 0.35, t)
-        ry = THREE.MathUtils.lerp(0, -Math.PI * 0.45, t)
+        rx = THREE.MathUtils.lerp(0.08, 0.35, t)
+        ry = THREE.MathUtils.lerp(0.12, -Math.PI * 0.45, t)
         rz = THREE.MathUtils.lerp(0, 0.18, t)
       } else {
         const t = stage - 1
@@ -373,6 +374,8 @@ export default function SignalRingCanvas({ sectionRef }) {
         rz = THREE.MathUtils.lerp(0.18, -0.15, t)
       }
       scrollGroup.position.x = px
+      /* Hero: sit lantern slightly lower so title reads over it */
+      scrollGroup.position.y = THREE.MathUtils.lerp(-0.45, 0, Math.min(1, stage))
       scrollGroup.rotation.set(rx, ry, rz)
 
       if (smoothP < 0.03) idleY += dt * 0.35

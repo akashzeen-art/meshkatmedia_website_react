@@ -10,8 +10,11 @@ const WELCOMES = [
   { text: 'स्वागत है', lang: 'hi', dir: 'ltr' },
 ]
 
-const BLINK_MS = 520
-const HOLD_AFTER_MS = 1400
+const BLINK_MS = 900
+const BRAND_IN_MS = 3200
+const PILLAR_GAP_MS = 750
+const PILLAR_IN_MS = 900
+const HOLD_AFTER_MS = 2000
 
 function rand(min, max) {
   return min + Math.random() * (max - min)
@@ -40,7 +43,9 @@ export default function LanternPreloader({ onComplete }) {
   const [welcomeIndex, setWelcomeIndex] = useState(0)
   const [blinkOn, setBlinkOn] = useState(true)
   const [showBrand, setShowBrand] = useState(false)
-  const [showTagline, setShowTagline] = useState(false)
+  const [showConnect, setShowConnect] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
+  const [showGrow, setShowGrow] = useState(false)
 
   useEffect(() => {
     onCompleteRef.current = onComplete
@@ -73,7 +78,9 @@ export default function LanternPreloader({ onComplete }) {
       setWelcomeIndex(0)
       setBlinkOn(true)
       setShowBrand(true)
-      setShowTagline(true)
+      setShowConnect(true)
+      setShowCreate(true)
+      setShowGrow(true)
       schedule(finish, 900)
       return () => clearTimers()
     }
@@ -82,9 +89,11 @@ export default function LanternPreloader({ onComplete }) {
     setWelcomeIndex(0)
     setBlinkOn(true)
     setShowBrand(false)
-    setShowTagline(false)
+    setShowConnect(false)
+    setShowCreate(false)
+    setShowGrow(false)
 
-    /* After BL → center: Welcome once, then FR / ES / AR / HI, then logo */
+    /* Welcome languages → Meshkat Media → Connect → Create → Grow */
     schedule(() => {
       setWelcomeStep('cycle')
 
@@ -99,19 +108,26 @@ export default function LanternPreloader({ onComplete }) {
             schedule(nextLang, BLINK_MS)
           } else {
             setBlinkOn(false)
-            setWelcomeStep('brand')
-            setShowBrand(true)
             schedule(() => {
-              setWelcomeStep('tagline')
-              setShowTagline(true)
-              schedule(finish, HOLD_AFTER_MS)
-            }, 700)
+              setWelcomeStep('brand')
+              setShowBrand(true)
+              schedule(() => {
+                setWelcomeStep('tagline')
+                setShowConnect(true)
+                schedule(() => {
+                  setShowCreate(true)
+                  schedule(() => {
+                    setShowGrow(true)
+                    schedule(finish, PILLAR_IN_MS + HOLD_AFTER_MS)
+                  }, PILLAR_GAP_MS)
+                }, PILLAR_GAP_MS)
+              }, BRAND_IN_MS)
+            }, 420)
           }
-        }, 100)
+        }, 320)
       }
 
-      /* Hold English Welcome once, then cycle other languages */
-      schedule(nextLang, BLINK_MS + 200)
+      schedule(nextLang, BLINK_MS + 280)
     }, 1100)
 
     return () => clearTimers()
@@ -607,23 +623,37 @@ export default function LanternPreloader({ onComplete }) {
             <p
               className={`welcome-word${blinkOn ? ' is-on' : ' is-off'}${
                 showBrand ? ' is-gone' : ''
-              }${current.lang === 'ar' ? ' is-ar' : ''}${current.lang === 'hi' ? ' is-hi' : ''}`}
+              }${welcomeIndex % 2 === 0 ? ' is-orange' : ' is-yellow'}${
+                current.lang === 'ar' ? ' is-ar' : ''
+              }${current.lang === 'hi' ? ' is-hi' : ''}`}
               lang={current.lang}
               dir={current.dir}
             >
               {current.text}
             </p>
 
-            <h1 className={`welcome-brand${showBrand ? ' is-visible' : ''}`}>
-              <img
-                className="welcome-brand-logo"
-                src="/img/MeshkatMediaLogo.png"
-                alt="Meshkat Media"
-              />
+            <h1 className={`welcome-brand${showBrand ? ' is-visible' : ''}`} aria-label="Meshkat Media">
+              <span className={`welcome-name welcome-name--meshkat${showBrand ? ' is-in' : ''}`}>
+                Meshkat
+              </span>
+              <span className={`welcome-name welcome-name--media${showBrand ? ' is-in' : ''}`}>
+                Media
+              </span>
             </h1>
 
-            <p className={`welcome-tagline${showTagline ? ' is-visible' : ''}`}>
-              Connect <span aria-hidden="true">|</span> Create <span aria-hidden="true">|</span> Grow
+            <p
+              className={`welcome-tagline${showConnect || showCreate || showGrow ? ' is-visible' : ''}`}
+              aria-label="Connect Create Grow"
+            >
+              <span className={`welcome-pillar welcome-pillar--connect${showConnect ? ' is-in' : ''}`}>
+                Connect
+              </span>
+              <span className={`welcome-pillar welcome-pillar--create${showCreate ? ' is-in' : ''}`}>
+                Create
+              </span>
+              <span className={`welcome-pillar welcome-pillar--grow${showGrow ? ' is-in' : ''}`}>
+                Grow
+              </span>
             </p>
           </div>
         </div>

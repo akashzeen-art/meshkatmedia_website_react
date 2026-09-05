@@ -57,13 +57,12 @@ const stages = [
 ]
 
 /**
- * Sticky 3D lantern backdrop from after hero through the rest of the page.
+ * Sticky 3D lantern backdrop from hero through the rest of the page.
  * Pass remaining homepage sections as children.
  */
 export default function SignalExperience({ children }) {
   const sectionRef = useRef(null)
   const [active, setActive] = useState(0)
-  const [showHint, setShowHint] = useState(true)
 
   useEffect(() => {
     const section = sectionRef.current
@@ -76,28 +75,14 @@ export default function SignalExperience({ children }) {
           if (!entry.isIntersecting) continue
           const idx = Number(entry.target.dataset.idx || 0)
           setActive(idx)
-          setShowHint(idx === 0)
         }
       },
-      { threshold: 0.4, rootMargin: '-10% 0px -10% 0px' },
+      { threshold: 0.35, rootMargin: '-10% 0px -10% 0px' },
     )
     panels.forEach((p) => io.observe(p))
 
-    const rest = section.querySelector('.signal-rest')
-    let restIo
-    if (rest) {
-      restIo = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) setShowHint(false)
-        },
-        { threshold: 0.05 },
-      )
-      restIo.observe(rest)
-    }
-
     return () => {
       io.disconnect()
-      restIo?.disconnect()
     }
   }, [])
 
@@ -108,9 +93,6 @@ export default function SignalExperience({ children }) {
         <div className="signal-hud" aria-hidden="true">
           <div className="signal-hud-corner signal-hud-tl" />
           <div className="signal-hud-corner signal-hud-br" />
-          <p className={`signal-hint${showHint ? ' is-visible' : ''}`}>
-            ↑ hover the lantern to open the light ↑
-          </p>
           <div className="signal-stage-dots">
             {stages.map((s, i) => (
               <span key={s.id} className={`signal-dot${i === active ? ' is-active' : ''}`} />
@@ -120,6 +102,27 @@ export default function SignalExperience({ children }) {
       </div>
 
       <div className="signal-scroll">
+        <div className="signal-hero-panel" aria-label="Hero">
+          <div className="hero-content signal-hero-content">
+            <h1 className="hero-presents-title" aria-label="Meshkat Media Presents">
+              <span className="hero-presents-line">MESHKAT MEDIA</span>
+              <span className="hero-presents-line hero-presents-line--sub">PRESENTS</span>
+            </h1>
+
+            <p className="hero-pillars">
+              Digital Infrastructure <span aria-hidden="true">·</span> Growth{' '}
+              <span aria-hidden="true">·</span> Innovation
+            </p>
+
+            <ul className="hero-focus-list" role="list">
+              <li>DCB Enablement</li>
+              <li>Digital Marketing</li>
+              <li>Enterprise Solutions</li>
+              <li>Technology Platforms</li>
+            </ul>
+          </div>
+        </div>
+
         {stages.map((stage, index) => (
           <div
             key={stage.id}
