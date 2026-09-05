@@ -2083,32 +2083,53 @@ a.artist-name:hover {
 }
 
 @media (max-width: 720px) {
+  .signal-hero-content {
+    max-width: min(92vw, 48rem);
+    gap: 1.1rem;
+    padding-inline: 0.35rem;
+  }
+
   .hero-presents-line {
     white-space: normal;
     letter-spacing: 0.01em;
-    font-size: clamp(2rem, 11vw, 3.2rem);
+    font-size: clamp(1.85rem, 10.5vw, 3.2rem);
   }
 
   .hero-presents-line--sub {
-    font-size: clamp(1.35rem, 7vw, 2.1rem);
+    font-size: clamp(1.25rem, 6.5vw, 2.1rem);
+  }
+
+  .hero-pillars {
+    font-size: clamp(0.78rem, 3.4vw, 0.95rem);
+    letter-spacing: 0.04em;
+    max-width: 100%;
+    line-height: 1.45;
   }
 
   .hero-focus-list {
-    flex-wrap: nowrap;
-    gap: 0.25rem 0.45rem;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 0.65rem;
+    row-gap: 0.4rem;
+    overflow: visible;
     max-width: 100%;
-    justify-content: flex-start;
-    padding: 0 0.25rem;
-    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    justify-items: center;
+    padding: 0;
   }
 
   .hero-focus-list li {
-    font-size: clamp(0.62rem, 3vw, 0.78rem);
+    font-size: clamp(0.58rem, 2.75vw, 0.72rem);
+    letter-spacing: 0.015em;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+    max-width: 100%;
+    flex-shrink: 1;
   }
 
-  .hero-focus-list li:not(:last-child)::after {
-    margin-left: 0.45rem;
+  .hero-focus-list li::after {
+    content: none;
   }
 }
 
